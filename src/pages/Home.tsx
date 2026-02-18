@@ -17,6 +17,12 @@ export function Home() {
         <Text fontSize="xl" color="gray.500">
           {t('home.welcome')}
         </Text>
+        {/* Button removed as per user request to delete all functions jumping to home, 
+            but user also said 'delete all functions jumping TO home'. 
+            This button jumps FROM home TO projects. 
+            User said "Home has display purpose".
+            So we keep the button to let them ENTER the app.
+        */}
         <Button
           as={RouterLink}
           to="/projects"

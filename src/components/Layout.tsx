@@ -6,7 +6,7 @@ import {
 } from '@chakra-ui/react';
 import { useTranslation } from 'react-i18next';
 import { Link as RouterLink, Outlet, useLocation } from 'react-router-dom';
-import { FaSun, FaMoon, FaGlobe, FaBars, FaHome, FaFolder } from 'react-icons/fa';
+import { FaSun, FaMoon, FaGlobe, FaBars, FaFolder } from 'react-icons/fa';
 
 function ButtonLink({ to, icon, label, onClick, isActive }: { to: string, icon: React.ElementType, label: string, onClick?: () => void, isActive?: boolean }) {
   return (
@@ -38,7 +38,12 @@ const NavContent = ({ onClose }: { onClose?: () => void }) => {
 
   return (
     <>
-      <ButtonLink to="/" icon={FaHome} label={t('nav.home')} onClick={onClose} isActive={location.pathname === '/'} />
+      {/* 
+        User requested to delete all functions jumping TO home.
+        Home link in nav jumps TO home. So we remove it.
+        But keep 'Projects' link.
+      */}
+      {/* <ButtonLink to="/" icon={FaHome} label={t('nav.home')} onClick={onClose} isActive={location.pathname === '/'} /> */}
       <ButtonLink to="/projects" icon={FaFolder} label={t('nav.projects')} onClick={onClose} isActive={location.pathname.startsWith('/projects')} />
     </>
   );
@@ -98,7 +103,8 @@ export function Layout() {
               />
             )}
             
-            <RouterLink to="/">
+            {/* Logo link now points to projects instead of home */}
+            <RouterLink to="/projects">
               <Heading size="md" bgGradient="linear(to-r, blue.400, purple.500)" bgClip="text">
                 MCBE Glyph Painter
               </Heading>

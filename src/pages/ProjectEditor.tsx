@@ -28,23 +28,26 @@ interface SidebarProps {
   onFileClick: (file: FileNode) => void;
   onAddFile: () => void;
   t: TFunction;
+  hideHeader?: boolean;
 }
 
-const Sidebar = ({ files, activeFile, onFileClick, onAddFile, t }: SidebarProps) => (
+const Sidebar = ({ files, activeFile, onFileClick, onAddFile, t, hideHeader }: SidebarProps) => (
   <VStack align="stretch" h="full" bg="gray.50" _dark={{ bg: 'gray.900' }} borderRightWidth="1px">
-    <Flex p={4} borderBottomWidth="1px" justify="space-between" align="center">
-      <Text fontWeight="bold" fontSize="sm" textTransform="uppercase" color="gray.500">
-        {t('editor.explorer')}
-      </Text>
-      <IconButton
-        aria-label="Add file"
-        icon={<Icon as={FaPlus} />}
-        size="xs"
-        variant="ghost"
-        onClick={onAddFile}
-        title={t('common.addFile', 'Add File')}
-      />
-    </Flex>
+    {!hideHeader && (
+      <Flex p={4} borderBottomWidth="1px" justify="space-between" align="center">
+        <Text fontWeight="bold" fontSize="sm" textTransform="uppercase" color="gray.500">
+          {t('editor.explorer')}
+        </Text>
+        <IconButton
+          aria-label="Add file"
+          icon={<Icon as={FaPlus} />}
+          size="xs"
+          variant="ghost"
+          onClick={onAddFile}
+          title={t('common.addFile', 'Add File')}
+        />
+      </Flex>
+    )}
     <VStack align="stretch" spacing={0} overflowY="auto" flex={1}>
       {files.map(file => (
         <HStack
@@ -257,9 +260,34 @@ export function ProjectEditor() {
         <Drawer isOpen={isOpen} placement="left" onClose={onClose}>
           <DrawerOverlay />
           <DrawerContent>
-            <DrawerCloseButton />
+            {/* 
+                Mobile Drawer Header:
+                Contains the "Explorer" title and "Add File" button.
+                DrawerCloseButton is automatically positioned top-right.
+                We add padding-right to the header to avoid overlap with the close button.
+            */}
+            <DrawerCloseButton zIndex={10} />
             <DrawerBody p={0}>
-              <Sidebar files={files} activeFile={activeFile} onFileClick={handleFileClick} onAddFile={onCreateModalOpen} t={t} />
+               <Flex 
+                 p={4} 
+                 borderBottomWidth="1px" 
+                 justify="space-between" 
+                 align="center"
+                 pr={12} // Add right padding to clear the close button
+               >
+                  <Text fontWeight="bold" fontSize="sm" textTransform="uppercase" color="gray.500">
+                    {t('editor.explorer')}
+                  </Text>
+                  <IconButton
+                    aria-label="Add file"
+                    icon={<Icon as={FaPlus} />}
+                    size="xs"
+                    variant="ghost"
+                    onClick={onCreateModalOpen}
+                    title={t('common.addFile', 'Add File')}
+                  />
+               </Flex>
+              <Sidebar files={files} activeFile={activeFile} onFileClick={handleFileClick} onAddFile={onCreateModalOpen} t={t} hideHeader={true} />
             </DrawerBody>
           </DrawerContent>
         </Drawer>
