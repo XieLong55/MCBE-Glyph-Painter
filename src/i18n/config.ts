@@ -62,7 +62,12 @@ const resources = {
       "modal.createFile.error.resolutionMultiple": "Resolution must be a multiple of 16",
       "common.cancel": "Cancel",
       "common.create": "Create",
-      "common.addFile": "Add File"
+      "common.addFile": "Add File",
+      "editor.mode.edit": "Edit Mode",
+      "editor.mode.codepoint": "Code Point Mode",
+      "editor.mode.copy": "Copy Mode",
+      "editor.copied": "Copied",
+      "editor.invalid_filename_pattern": "Filename does not match glyph_XX pattern"
     }
   },
   zh: {
@@ -124,7 +129,12 @@ const resources = {
       "modal.createFile.error.resolutionMultiple": "分辨率必须是 16 的倍数",
       "common.cancel": "取消",
       "common.create": "创建",
-      "common.addFile": "添加文件"
+      "common.addFile": "添加文件",
+      "editor.mode.edit": "编辑模式",
+      "editor.mode.codepoint": "码点模式",
+      "editor.mode.copy": "复制模式",
+      "editor.copied": "已复制",
+      "editor.invalid_filename_pattern": "文件名不符合 glyph_XX 格式"
     }
   }
 };

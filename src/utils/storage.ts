@@ -20,7 +20,7 @@ const filesStore = localforage.createInstance({
 });
 
 // Debug initialization
-let initPromise: Promise<void>;
+// let initPromise: Promise<void>;
 
 const initStorage = async () => {
   console.group('Storage Initialization Debug');
@@ -29,6 +29,7 @@ const initStorage = async () => {
     console.log('Checking browser support...');
     console.log('IndexedDB support:', !!window.indexedDB);
     console.log('LocalStorage support:', !!window.localStorage);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     console.log('WebSQL support:', !!(window as any).openDatabase);
 
     // 2. Try to initialize specifically with IndexedDB first
@@ -71,6 +72,7 @@ const initStorage = async () => {
     console.log(`[Storage] Active Driver: ${filesStore.driver()}`);
 
     // Expose for debugging in console
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     (window as any).debugStorage = {
         projects: projectsStore,
         files: filesStore,
@@ -116,7 +118,7 @@ const initStorage = async () => {
   console.groupEnd();
 };
 
-initPromise = initStorage();
+const initPromise = initStorage();
 
 export const StorageService = {
   // Projects

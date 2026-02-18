@@ -75,7 +75,6 @@ export const CreateFileModal: React.FC<CreateFileModalProps> = ({
     
     // Check if filename already exists (append .png if not present for check)
     const fullFilename = filename.endsWith('.png') ? filename : `${filename}.png`;
-    const checkPath = 'font/' + fullFilename;
     if (existingFiles.some(f => f === fullFilename || f.endsWith('/' + fullFilename))) {
        setError(t('modal.createFile.error.filenameExists', 'File already exists'));
        return false;

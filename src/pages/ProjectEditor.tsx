@@ -3,12 +3,13 @@ import { useParams } from 'react-router-dom';
 import {
   Box, Flex, VStack, Text, IconButton, useDisclosure, Drawer, DrawerOverlay, 
   DrawerContent, DrawerCloseButton, DrawerBody, useBreakpointValue,
-  HStack, Icon, Image, Center, Spinner, useToast
+  HStack, Icon, Center, Spinner, useToast
 } from '@chakra-ui/react';
 import { FaBars, FaFolder, FaTimes, FaImage, FaFileExport, FaPlus } from 'react-icons/fa';
 import { StorageService } from '../utils/storage';
 import { exportProject } from '../utils/project';
 import { CreateFileModal } from '../components/CreateFileModal';
+import { GlyphEditor } from '../components/GlyphEditor';
 import type { Project } from '../types';
 import { useDocumentTitle } from '../hooks/useDocumentTitle';
 import { useTranslation } from 'react-i18next';
@@ -355,37 +356,12 @@ export function ProjectEditor() {
         </Flex>
 
         {/* Editor Content */}
-        <Box flex={1} bg="gray.100" _dark={{ bg: 'gray.900' }} overflow="auto" p={4}>
+        <Box flex={1} bg="gray.100" _dark={{ bg: 'gray.900' }} overflow="hidden" p={0}>
           {activeFile ? (
-            <Center h="full" flexDirection="column">
-              <Box 
-                bg="white" 
-                _dark={{ bg: 'gray.800' }} // Checkboard pattern for transparency
-                backgroundImage="linear-gradient(45deg, #ccc 25%, transparent 25%), linear-gradient(-45deg, #ccc 25%, transparent 25%), linear-gradient(45deg, transparent 75%, #ccc 75%), linear-gradient(-45deg, transparent 75%, #ccc 75%)"
-                backgroundSize="20px 20px"
-                backgroundPosition="0 0, 0 10px, 10px -10px, -10px 0px"
-                p={4}
-                borderRadius="md"
-                shadow="md"
-              >
-                <Image 
-                  src={fileContents[activeFile]} 
-                  maxH="60vh" 
-                  objectFit="contain" 
-                  onError={() => {
-                    console.error('Image load failed:', fileContents[activeFile]);
-                    toast({
-                        title: 'Image Load Error',
-                        description: `Failed to render image ${activeFile}`,
-                        status: 'error'
-                    });
-                  }}
-                />
-              </Box>
-              <Text mt={4} color="gray.500" fontSize="sm">
-                {activeFile}
-              </Text>
-            </Center>
+            <GlyphEditor 
+              fileUrl={fileContents[activeFile]} 
+              filename={activeFile.split('/').pop() || activeFile} 
+            />
           ) : (
             <Center h="full" color="gray.400" flexDirection="column">
               <Icon as={FaImage} w={16} h={16} mb={4} opacity={0.2} />
