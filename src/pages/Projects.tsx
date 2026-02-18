@@ -1,29 +1,21 @@
-import { useEffect, useState, useRef } from 'react';
-import { 
-  Button, Container, Grid, Heading, Text, VStack, Card, CardHeader, CardBody, CardFooter, 
-  HStack, Badge, Flex, Icon, IconButton, Tooltip, useDisclosure,
-  AlertDialog, AlertDialogBody, AlertDialogFooter, AlertDialogHeader, AlertDialogContent, AlertDialogOverlay,
-  useToast
-} from '@chakra-ui/react';
+import { useEffect, useState } from 'react';
+import { Button, Container, Grid, Heading, Text, VStack, Card, CardHeader, CardBody, CardFooter, HStack, Badge, Flex, Icon, IconButton, useToast } from '@chakra-ui/react';
 import { useTranslation } from 'react-i18next';
 import { Link as RouterLink, useNavigate } from 'react-router-dom';
 import { useDocumentTitle } from '../hooks/useDocumentTitle';
 import { StorageService } from '../utils/storage';
 import type { Project } from '../types';
 import { FaPlus, FaFileUpload, FaFolder, FaEdit, FaTrash } from 'react-icons/fa';
+import { EditProjectModal } from '../components/EditProjectModal';
 
 export function Projects() {
   const { t } = useTranslation();
+  const navigate = useNavigate();
+  const toast = useToast();
   useDocumentTitle('projects.title');
   const [projects, setProjects] = useState<Project[]>([]);
   const [loading, setLoading] = useState(true);
-  const navigate = useNavigate();
-  const toast = useToast();
-
-  // Delete confirmation dialog
-  const { isOpen, onOpen, onClose } = useDisclosure();
-  const cancelRef = useRef<HTMLButtonElement>(null);
-  const [projectToDelete, setProjectToDelete] = useState<string | null>(null);
+  const [editingProject, setEditingProject] = useState<Project | null>(null);
 
   // Load projects from local storage on mount
   useEffect(() => {
@@ -42,42 +34,35 @@ export function Projects() {
     }
   };
 
-  const handleCardClick = (uuid: string) => {
-    navigate(`/projects/${uuid}`);
-  };
-
-  const handleEdit = (e: React.MouseEvent, uuid: string) => {
+  const handleEdit = (e: React.MouseEvent, project: Project) => {
     e.stopPropagation();
-    navigate(`/projects/${uuid}`);
+    setEditingProject(project);
   };
 
-  const handleDeleteClick = (e: React.MouseEvent, uuid: string) => {
+  const handleDelete = async (e: React.MouseEvent, project: Project) => {
     e.stopPropagation();
-    setProjectToDelete(uuid);
-    onOpen();
-  };
-
-  const confirmDelete = async () => {
-    if (!projectToDelete) return;
-    
-    try {
-      await StorageService.deleteProject(projectToDelete);
-      toast({
-        title: t('common.success'),
-        status: 'success',
-        duration: 3000,
-      });
-      loadProjects();
-    } catch (error) {
-      console.error(error);
-      toast({
-        title: t('common.error'),
-        status: 'error',
-      });
-    } finally {
-      onClose();
-      setProjectToDelete(null);
+    if (window.confirm(t('projects.delete_confirm'))) {
+      try {
+        await StorageService.deleteProject(project.uuid);
+        toast({
+          title: t('common.success'),
+          status: 'success',
+          duration: 3000,
+        });
+        loadProjects();
+      } catch (error) {
+        console.error(error);
+        toast({
+          title: t('common.error'),
+          status: 'error',
+          duration: 3000,
+        });
+      }
     }
+  };
+
+  const handleCardClick = (project: Project) => {
+    navigate(`/projects/${project.uuid}`);
   };
 
   return (
@@ -117,14 +102,16 @@ export function Projects() {
             <Card 
               key={project.uuid} 
               variant="outline" 
-              _hover={{ shadow: 'md', borderColor: 'blue.400' }}
+              _hover={{ shadow: 'md', borderColor: 'blue.400' }} 
               cursor="pointer"
-              onClick={() => handleCardClick(project.uuid)}
+              onClick={() => handleCardClick(project)}
               transition="all 0.2s"
             >
               <CardHeader pb={2}>
-                <Heading size="md" noOfLines={1}>{project.name}</Heading>
-                <Badge mt={2} colorScheme="purple">v{project.version.join('.')}</Badge>
+                <Flex justify="space-between" align="start">
+                  <Heading size="md" noOfLines={1} title={project.name}>{project.name}</Heading>
+                  <Badge colorScheme="purple" flexShrink={0}>v{project.version.join('.')}</Badge>
+                </Flex>
               </CardHeader>
               <CardBody py={2}>
                 <VStack align="start" gap={2}>
@@ -149,26 +136,23 @@ export function Projects() {
                 <Text fontSize="sm" color="gray.400">
                   {new Date(project.updated_at).toLocaleDateString()}
                 </Text>
-                <HStack spacing={1}>
-                  <Tooltip label={t('project.edit')}>
-                    <IconButton
-                      aria-label={t('project.edit')}
-                      icon={<Icon as={FaEdit} />}
-                      size="sm"
-                      variant="ghost"
-                      onClick={(e) => handleEdit(e, project.uuid)}
-                    />
-                  </Tooltip>
-                  <Tooltip label={t('project.delete')}>
-                    <IconButton
-                      aria-label={t('project.delete')}
-                      icon={<Icon as={FaTrash} />}
-                      size="sm"
-                      variant="ghost"
-                      colorScheme="red"
-                      onClick={(e) => handleDeleteClick(e, project.uuid)}
-                    />
-                  </Tooltip>
+                <HStack>
+                  <IconButton 
+                    aria-label={t('common.edit')} 
+                    icon={<FaEdit />} 
+                    size="sm" 
+                    variant="ghost"
+                    colorScheme="blue"
+                    onClick={(e) => handleEdit(e, project)} 
+                  />
+                  <IconButton 
+                    aria-label={t('common.delete')} 
+                    icon={<FaTrash />} 
+                    size="sm" 
+                    variant="ghost"
+                    colorScheme="red"
+                    onClick={(e) => handleDelete(e, project)} 
+                  />
                 </HStack>
               </CardFooter>
             </Card>
@@ -176,32 +160,14 @@ export function Projects() {
         </Grid>
       )}
 
-      <AlertDialog
-        isOpen={isOpen}
-        leastDestructiveRef={cancelRef as React.RefObject<HTMLElement>}
-        onClose={onClose}
-      >
-        <AlertDialogOverlay>
-          <AlertDialogContent>
-            <AlertDialogHeader fontSize="lg" fontWeight="bold">
-              {t('project.delete_confirm_title')}
-            </AlertDialogHeader>
-
-            <AlertDialogBody>
-              {t('project.delete_confirm_body')}
-            </AlertDialogBody>
-
-            <AlertDialogFooter>
-              <Button ref={cancelRef} onClick={onClose}>
-                {t('common.cancel')}
-              </Button>
-              <Button colorScheme="red" onClick={confirmDelete} ml={3}>
-                {t('project.delete')}
-              </Button>
-            </AlertDialogFooter>
-          </AlertDialogContent>
-        </AlertDialogOverlay>
-      </AlertDialog>
+      {editingProject && (
+        <EditProjectModal
+          project={editingProject}
+          isOpen={!!editingProject}
+          onClose={() => setEditingProject(null)}
+          onSave={loadProjects}
+        />
+      )}
     </Container>
   );
 }

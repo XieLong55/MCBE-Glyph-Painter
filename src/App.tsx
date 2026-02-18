@@ -5,7 +5,6 @@ import { Home } from './pages/Home';
 import { Projects } from './pages/Projects';
 import { CreateProject } from './pages/CreateProject';
 import { ImportProject } from './pages/ImportProject';
-import { ProjectDetail } from './pages/ProjectDetail';
 
 function App() {
   return (
@@ -17,7 +16,6 @@ function App() {
             <Route path="projects" element={<Projects />} />
             <Route path="projects/create" element={<CreateProject />} />
             <Route path="projects/import" element={<ImportProject />} />
-            <Route path="projects/:id" element={<ProjectDetail />} />
           </Route>
         </Routes>
       </BrowserRouter>
