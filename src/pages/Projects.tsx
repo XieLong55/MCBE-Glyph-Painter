@@ -106,6 +106,8 @@ export function Projects() {
               cursor="pointer"
               onClick={() => handleCardClick(project)}
               transition="all 0.2s"
+              h="100%"
+              direction="column"
             >
               <CardHeader pb={2}>
                 <Flex justify="space-between" align="start">
@@ -113,7 +115,7 @@ export function Projects() {
                   <Badge colorScheme="purple" flexShrink={0}>v{project.version.join('.')}</Badge>
                 </Flex>
               </CardHeader>
-              <CardBody py={2}>
+              <CardBody py={2} flex="1">
                 <VStack align="start" gap={2}>
                   {project.header_description && (
                     <Text fontSize="sm" fontWeight="medium" color="gray.600" _dark={{ color: 'gray.300' }} noOfLines={2}>
