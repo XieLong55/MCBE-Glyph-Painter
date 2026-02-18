@@ -84,7 +84,7 @@ export function Layout() {
   };
 
   return (
-    <Box minH="100vh" bg={colorMode === 'light' ? 'gray.50' : 'gray.900'}>
+    <Flex direction="column" minH="100vh" bg={colorMode === 'light' ? 'gray.50' : 'gray.900'}>
       <Box bg={colorMode === 'light' ? 'white' : 'gray.800'} shadow="sm" position="sticky" top={0} zIndex={1000}>
         <Container maxW="full" px={8}>
           <Flex h={16} alignItems="center">
@@ -151,9 +151,19 @@ export function Layout() {
         </DrawerContent>
       </Drawer>
 
-      <Box py={8}>
+      <Box py={8} flex="1">
         <Outlet />
       </Box>
-    </Box>
+
+      <Box bg={colorMode === 'light' ? 'white' : 'gray.800'} borderTopWidth="1px" py={6}>
+        <Container maxW="full" px={8}>
+          <Flex direction="column" justify="center" align="center" color="gray.500">
+            <Text fontSize="sm" textAlign="center">
+              &copy; {new Date().getFullYear()} XieLong55. All rights reserved.
+            </Text>
+          </Flex>
+        </Container>
+      </Box>
+    </Flex>
   );
 }

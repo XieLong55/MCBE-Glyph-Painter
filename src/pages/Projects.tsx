@@ -1,12 +1,18 @@
-import { useEffect, useState } from 'react';
-import { Button, Container, Grid, Heading, Text, VStack, Card, CardHeader, CardBody, CardFooter, HStack, Badge, Flex, Icon, IconButton, useToast } from '@chakra-ui/react';
+import { useEffect, useState, useRef } from 'react';
+import { 
+  Button, Container, Grid, Heading, Text, VStack, Card, CardHeader, CardBody, CardFooter, 
+  HStack, Badge, Flex, Icon, IconButton, useToast,
+  AlertDialog, AlertDialogBody, AlertDialogFooter, AlertDialogHeader, AlertDialogContent, AlertDialogOverlay
+} from '@chakra-ui/react';
 import { useTranslation } from 'react-i18next';
 import { Link as RouterLink, useNavigate } from 'react-router-dom';
 import { useDocumentTitle } from '../hooks/useDocumentTitle';
 import { StorageService } from '../utils/storage';
+import { exportProject } from '../utils/project';
 import type { Project } from '../types';
-import { FaPlus, FaFileUpload, FaFolder, FaEdit, FaTrash } from 'react-icons/fa';
+import { FaPlus, FaFileUpload, FaFolder, FaEdit, FaTrash, FaFileExport } from 'react-icons/fa';
 import { EditProjectModal } from '../components/EditProjectModal';
+import { MinecraftText } from '../components/MinecraftText';
 
 export function Projects() {
   const { t } = useTranslation();
@@ -16,6 +22,11 @@ export function Projects() {
   const [projects, setProjects] = useState<Project[]>([]);
   const [loading, setLoading] = useState(true);
   const [editingProject, setEditingProject] = useState<Project | null>(null);
+  
+  // Delete dialog state
+  const [isDeleteOpen, setIsDeleteOpen] = useState(false);
+  const [projectToDelete, setProjectToDelete] = useState<Project | null>(null);
+  const cancelRef = useRef<HTMLButtonElement>(null);
 
   // Load projects from local storage on mount
   useEffect(() => {
@@ -39,25 +50,52 @@ export function Projects() {
     setEditingProject(project);
   };
 
-  const handleDelete = async (e: React.MouseEvent, project: Project) => {
+  const handleExport = async (e: React.MouseEvent, project: Project) => {
     e.stopPropagation();
-    if (window.confirm(t('projects.delete_confirm'))) {
-      try {
-        await StorageService.deleteProject(project.uuid);
+    try {
+        await exportProject(project.uuid);
         toast({
-          title: t('common.success'),
-          status: 'success',
-          duration: 3000,
+            title: t('common.success'),
+            status: 'success',
+            duration: 3000,
         });
-        loadProjects();
-      } catch (error) {
+    } catch (error) {
         console.error(error);
         toast({
-          title: t('common.error'),
-          status: 'error',
-          duration: 3000,
+            title: t('common.error'),
+            status: 'error',
+            duration: 3000,
         });
-      }
+    }
+  };
+
+  const handleDeleteClick = (e: React.MouseEvent, project: Project) => {
+    e.stopPropagation();
+    setProjectToDelete(project);
+    setIsDeleteOpen(true);
+  };
+
+  const handleDeleteConfirm = async () => {
+    if (!projectToDelete) return;
+    
+    try {
+      await StorageService.deleteProject(projectToDelete.uuid);
+      toast({
+        title: t('common.success'),
+        status: 'success',
+        duration: 3000,
+      });
+      loadProjects();
+    } catch (error) {
+      console.error(error);
+      toast({
+        title: t('common.error'),
+        status: 'error',
+        duration: 3000,
+      });
+    } finally {
+      setIsDeleteOpen(false);
+      setProjectToDelete(null);
     }
   };
 
@@ -111,7 +149,9 @@ export function Projects() {
             >
               <CardHeader pb={2}>
                 <Flex justify="space-between" align="start">
-                  <Heading size="md" noOfLines={1} title={project.name}>{project.name}</Heading>
+                  <Heading size="md" noOfLines={1} title={project.name}>
+                    <MinecraftText text={project.name} />
+                  </Heading>
                   <Badge colorScheme="purple" flexShrink={0}>v{project.version.join('.')}</Badge>
                 </Flex>
               </CardHeader>
@@ -119,17 +159,17 @@ export function Projects() {
                 <VStack align="start" gap={2}>
                   {project.header_description && (
                     <Text fontSize="sm" fontWeight="medium" color="gray.600" _dark={{ color: 'gray.300' }} noOfLines={2}>
-                      {project.header_description}
+                      <MinecraftText text={project.header_description} />
                     </Text>
                   )}
                   {project.modules_description && project.modules_description !== project.header_description && (
                     <Text fontSize="xs" color="gray.500" _dark={{ color: 'gray.400' }} noOfLines={2}>
-                      {project.modules_description}
+                      <MinecraftText text={project.modules_description} />
                     </Text>
                   )}
                   {!project.header_description && !project.modules_description && (
                     <Text noOfLines={3} color="gray.500">
-                      {project.description}
+                      <MinecraftText text={project.description} />
                     </Text>
                   )}
                 </VStack>
@@ -139,6 +179,14 @@ export function Projects() {
                   {new Date(project.updated_at).toLocaleDateString()}
                 </Text>
                 <HStack>
+                  <IconButton 
+                    aria-label={t('common.export')} 
+                    icon={<FaFileExport />} 
+                    size="sm" 
+                    variant="ghost"
+                    colorScheme="purple"
+                    onClick={(e) => handleExport(e, project)} 
+                  />
                   <IconButton 
                     aria-label={t('common.edit')} 
                     icon={<FaEdit />} 
@@ -153,7 +201,7 @@ export function Projects() {
                     size="sm" 
                     variant="ghost"
                     colorScheme="red"
-                    onClick={(e) => handleDelete(e, project)} 
+                    onClick={(e) => handleDeleteClick(e, project)} 
                   />
                 </HStack>
               </CardFooter>
@@ -168,8 +216,40 @@ export function Projects() {
           isOpen={!!editingProject}
           onClose={() => setEditingProject(null)}
           onSave={loadProjects}
+          onDelete={() => {
+            setProjectToDelete(editingProject);
+            setEditingProject(null);
+            setIsDeleteOpen(true);
+          }}
         />
       )}
+
+      <AlertDialog
+        isOpen={isDeleteOpen}
+        leastDestructiveRef={cancelRef as React.RefObject<HTMLElement>}
+        onClose={() => setIsDeleteOpen(false)}
+      >
+        <AlertDialogOverlay>
+          <AlertDialogContent>
+            <AlertDialogHeader fontSize="lg" fontWeight="bold">
+              {t('common.delete')} {t('projects.project')}
+            </AlertDialogHeader>
+
+            <AlertDialogBody>
+              {t('projects.delete_confirm')}
+            </AlertDialogBody>
+
+            <AlertDialogFooter>
+              <Button ref={cancelRef} onClick={() => setIsDeleteOpen(false)}>
+                {t('create.cancel')}
+              </Button>
+              <Button colorScheme="red" onClick={handleDeleteConfirm} ml={3}>
+                {t('common.delete')}
+              </Button>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialogOverlay>
+      </AlertDialog>
     </Container>
   );
 }

@@ -5,7 +5,7 @@ import {
   Tabs, TabList, TabPanels, Tab, TabPanel, Text, Badge, Grid, GridItem, Icon
 } from '@chakra-ui/react';
 import { useTranslation } from 'react-i18next';
-import { FaSync, FaSave } from 'react-icons/fa';
+import { FaSync, FaSave, FaTrash } from 'react-icons/fa';
 import { v4 as uuidv4 } from 'uuid';
 import { StorageService } from '../utils/storage';
 import type { Project, Manifest } from '../types';
@@ -15,9 +15,10 @@ interface EditProjectModalProps {
   isOpen: boolean;
   onClose: () => void;
   onSave: () => void;
+  onDelete?: () => void;
 }
 
-export function EditProjectModal({ project, isOpen, onClose, onSave }: EditProjectModalProps) {
+export function EditProjectModal({ project, isOpen, onClose, onSave, onDelete }: EditProjectModalProps) {
   const { t } = useTranslation();
   const toast = useToast();
   const [manifest, setManifest] = useState<Manifest | null>(null);
@@ -251,13 +252,20 @@ export function EditProjectModal({ project, isOpen, onClose, onSave }: EditProje
           </Tabs>
         </ModalBody>
 
-        <ModalFooter>
-          <Button variant="ghost" mr={3} onClick={onClose}>
-            {t('create.cancel')}
-          </Button>
-          <Button colorScheme="blue" onClick={handleSave} isLoading={saving} leftIcon={<Icon as={FaSave} />}>
-            {t('common.save')}
-          </Button>
+        <ModalFooter justifyContent="space-between">
+          {onDelete && (
+            <Button colorScheme="red" variant="ghost" onClick={onDelete} leftIcon={<Icon as={FaTrash} />}>
+              {t('common.delete')}
+            </Button>
+          )}
+          <HStack>
+            <Button variant="ghost" mr={3} onClick={onClose}>
+              {t('create.cancel')}
+            </Button>
+            <Button colorScheme="blue" onClick={handleSave} isLoading={saving} leftIcon={<Icon as={FaSave} />}>
+              {t('common.save')}
+            </Button>
+          </HStack>
         </ModalFooter>
       </ModalContent>
     </Modal>

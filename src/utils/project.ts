@@ -52,9 +52,18 @@ export const createNewProject = async (
   const defaultAssets = ['glyph_E0.png', 'glyph_E1.png'];
   for (const asset of defaultAssets) {
     try {
+      console.log(`Fetching default asset: /${asset}`);
       const response = await fetch(`/${asset}`);
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
       const blob = await response.blob();
-      await StorageService.saveFile(projectUuid, asset, blob);
+      console.log(`Fetched ${asset}, size: ${blob.size}`);
+      
+      // Ensure correct MIME type
+      const finalBlob = new Blob([blob], { type: 'image/png' });
+      // Save to font/ directory
+      await StorageService.saveFile(projectUuid, `font/${asset}`, finalBlob);
     } catch (error) {
       console.error(`Failed to load default asset: ${asset}`, error);
     }
@@ -69,27 +78,67 @@ export const createNewProject = async (
 export const parseProjectManifest = async (file: File): Promise<{ manifest: Manifest, zip: JSZip } | null> => {
   try {
     const zip = await JSZip.loadAsync(file);
-    const manifestFile = zip.file('manifest.json');
+    let manifestFile = zip.file('manifest.json');
     
     if (!manifestFile) {
       // Try to find manifest.json in subdirectories
       const files = Object.keys(zip.files);
       const manifestPath = files.find(path => path.endsWith('manifest.json'));
-      if (!manifestPath) {
+      if (manifestPath) {
+        manifestFile = zip.file(manifestPath);
+      } else {
         throw new Error('manifest.json not found');
       }
-      const content = await zip.file(manifestPath)!.async('string');
-      // Strip comments if any (JSON doesn't support comments but MC sometimes has them, though strict JSON parser will fail)
-      // For now assume valid JSON
-      return { manifest: JSON.parse(content), zip };
     }
 
-    const content = await manifestFile.async('string');
-    return { manifest: JSON.parse(content), zip };
+    let manifestContent = '';
+    if (manifestFile) {
+      manifestContent = await manifestFile.async('string');
+    }
+
+    // Clean up content to handle potential JSON issues (comments, trailing commas, BOM)
+    // 0. Remove BOM (Byte Order Mark)
+    manifestContent = manifestContent.replace(/^\uFEFF/, '');
+    // 1. Remove single-line comments //
+    manifestContent = manifestContent.replace(/\/\/.*$/gm, '');
+    // 2. Remove multi-line comments /* */
+    manifestContent = manifestContent.replace(/\/\*[\s\S]*?\*\//g, '');
+    // 3. Remove trailing commas
+    manifestContent = manifestContent.replace(/,(\s*[}\]])/g, '$1');
+
+    return { manifest: JSON.parse(manifestContent), zip };
   } catch (error) {
     console.error('Failed to parse manifest', error);
     return null;
   }
+};
+
+export const exportProject = async (projectUuid: string): Promise<void> => {
+  const project = await StorageService.getProject(projectUuid);
+  if (!project) throw new Error('Project not found');
+
+  const zip = new JSZip();
+  const allFiles = await StorageService.getAllFiles(projectUuid);
+
+  // Add all files to zip
+  for (const [path, content] of Object.entries(allFiles)) {
+    // If content is a Blob, we can pass it directly.
+    // If it's a string, we can pass it directly.
+    zip.file(path, content);
+  }
+
+  // Generate zip file
+  const blob = await zip.generateAsync({ type: 'blob' });
+  
+  // Trigger download
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `${project.name.replace(/[^a-z0-9]/gi, '_').toLowerCase()}.mcpack`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
 };
 
 export const saveImportedProject = async (
@@ -114,9 +163,24 @@ export const saveImportedProject = async (
   for (const filePath of files) {
     if (zip.files[filePath].dir) continue;
     
-    const content = await zip.file(filePath)!.async('blob');
-    // If manifest was in a subdir, we might want to normalize paths?
-    // For now, save as is.
+    // Check if the file is an image
+    const isImage = /\.(png|jpg|jpeg|gif|bmp)$/i.test(filePath);
+    
+    let content: Blob | string;
+    if (isImage) {
+        const blob = await zip.file(filePath)!.async('blob');
+        console.log(`Extracted image ${filePath}, size: ${blob.size}`);
+        // Re-create blob with correct MIME type
+        const mimeType = getMimeType(filePath);
+        content = new Blob([blob], { type: mimeType });
+    } else {
+        // For other files, we can also store as blob to be safe, or text
+        // Storing as blob is safer for binary integrity
+        const blob = await zip.file(filePath)!.async('blob');
+        console.log(`Extracted file ${filePath}, size: ${blob.size}`);
+        content = blob;
+    }
+    
     await StorageService.saveFile(projectUuid, filePath, content);
   }
 
@@ -125,3 +189,16 @@ export const saveImportedProject = async (
 
   return project;
 };
+
+function getMimeType(filename: string): string {
+  const ext = filename.split('.').pop()?.toLowerCase();
+  switch (ext) {
+    case 'png': return 'image/png';
+    case 'jpg':
+    case 'jpeg': return 'image/jpeg';
+    case 'gif': return 'image/gif';
+    case 'bmp': return 'image/bmp';
+    case 'json': return 'application/json';
+    default: return 'application/octet-stream';
+  }
+}

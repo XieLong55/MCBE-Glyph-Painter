@@ -47,8 +47,22 @@ const resources = {
       "common.save": "Save",
       "common.edit": "Edit",
       "common.delete": "Delete",
+      "common.export": "Export",
       "projects.delete_confirm": "Are you sure you want to delete this project? This action cannot be undone.",
-      "project.edit_manifest": "Edit Project Manifest"
+      "project.edit_manifest": "Edit Project Manifest",
+      "editor.explorer": "Explorer",
+      "projects.project": "Project",
+      "modal.createFile.title": "Create New File",
+      "modal.createFile.filename": "Filename",
+      "modal.createFile.resolution": "Resolution (Width = Height)",
+      "modal.createFile.resolutionHint": "Recommended: 256, 512. Must be multiple of 16.",
+      "modal.createFile.error.filenameRequired": "Filename is required",
+      "modal.createFile.error.filenameExists": "File already exists",
+      "modal.createFile.error.minResolution": "Minimum resolution is 256",
+      "modal.createFile.error.resolutionMultiple": "Resolution must be a multiple of 16",
+      "common.cancel": "Cancel",
+      "common.create": "Create",
+      "common.addFile": "Add File"
     }
   },
   zh: {
@@ -95,8 +109,22 @@ const resources = {
       "common.save": "保存",
       "common.edit": "编辑",
       "common.delete": "删除",
+      "common.export": "导出",
       "projects.delete_confirm": "确定要删除此项目吗？此操作无法撤销。",
-      "project.edit_manifest": "编辑 Manifest"
+      "project.edit_manifest": "编辑 Manifest",
+      "editor.explorer": "资源管理器",
+      "projects.project": "项目",
+      "modal.createFile.title": "新建文件",
+      "modal.createFile.filename": "文件名",
+      "modal.createFile.resolution": "分辨率 (宽 = 高)",
+      "modal.createFile.resolutionHint": "推荐: 256, 512。必须是16的倍数。",
+      "modal.createFile.error.filenameRequired": "文件名不能为空",
+      "modal.createFile.error.filenameExists": "文件已存在",
+      "modal.createFile.error.minResolution": "最小分辨率为 256",
+      "modal.createFile.error.resolutionMultiple": "分辨率必须是 16 的倍数",
+      "common.cancel": "取消",
+      "common.create": "创建",
+      "common.addFile": "添加文件"
     }
   }
 };
