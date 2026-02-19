@@ -15,6 +15,7 @@ import {
   ModalHeader,
   ModalBody,
   ModalFooter,
+  ModalCloseButton,
   useDisclosure,
   Input,
   Popover,
@@ -23,6 +24,11 @@ import {
   PopoverBody,
   PopoverArrow,
   PopoverCloseButton,
+  Spacer,
+  Divider,
+  Switch,
+  FormControl,
+  FormLabel,
 } from '@chakra-ui/react';
 import {
   FaPen,
@@ -37,6 +43,8 @@ import {
   FaSearchPlus,
   FaSearchMinus,
   FaCompress,
+  FaCog,
+  FaCircle,
 } from 'react-icons/fa';
 import { useTranslation } from 'react-i18next';
 
@@ -93,6 +101,11 @@ export const SliceEditor: React.FC<SliceEditorProps> = ({
   const [isPanning, setIsPanning] = useState(false);
   const [panStart, setPanStart] = useState({ x: 0, y: 0 });
   const [lastTouchDist, setLastTouchDist] = useState<number | null>(null);
+  
+  // Settings
+  const { isOpen: isSettingsOpen, onOpen: onSettingsOpen, onClose: onSettingsClose } = useDisclosure();
+  const [showGrid, setShowGrid] = useState(false);
+  const [brushSize, setBrushSize] = useState<1 | 3 | 5>(1);
 
   // Default palette colors
   const [palette, setPalette] = useState<string[]>(() => {
@@ -229,28 +242,47 @@ export const SliceEditor: React.FC<SliceEditorProps> = ({
     // Bounds check
     const width = ctx.canvas.width;
     const height = ctx.canvas.height;
-    if (x < 0 || x >= width || y < 0 || y >= height) return;
+    
+    // Brush size logic
+    const halfSize = Math.floor(brushSize / 2);
+    const startX = x - halfSize;
+    const endX = x + halfSize;
+    const startY = y - halfSize;
+    const endY = y + halfSize;
+    
+    // Optimization: Check if brush is within bounds
+    if (startX >= width || endX < 0 || startY >= height || endY < 0) return;
 
     const imgData = ctx.getImageData(0, 0, width, height);
-    const index = (y * width + x) * 4;
-    
     const color = isEraser ? { r: 0, g: 0, b: 0, a: 0 } : hexToRgba(primaryColor);
+    let hasChanges = false;
 
-    // Optimization: Don't redraw if same color
-    if (
-      imgData.data[index] === color.r &&
-      imgData.data[index + 1] === color.g &&
-      imgData.data[index + 2] === color.b &&
-      imgData.data[index + 3] === color.a
-    ) return;
+    for (let py = startY; py <= endY; py++) {
+        for (let px = startX; px <= endX; px++) {
+            if (px < 0 || px >= width || py < 0 || py >= height) continue;
+            
+            const index = (py * width + px) * 4;
+            
+            // Optimization: Don't redraw if same color
+            if (
+              imgData.data[index] === color.r &&
+              imgData.data[index + 1] === color.g &&
+              imgData.data[index + 2] === color.b &&
+              imgData.data[index + 3] === color.a
+            ) continue;
 
-    imgData.data[index] = color.r;
-    imgData.data[index + 1] = color.g;
-    imgData.data[index + 2] = color.b;
-    imgData.data[index + 3] = color.a;
+            imgData.data[index] = color.r;
+            imgData.data[index + 1] = color.g;
+            imgData.data[index + 2] = color.b;
+            imgData.data[index + 3] = color.a;
+            hasChanges = true;
+        }
+    }
     
-    ctx.putImageData(imgData, 0, 0);
-    setIsDirty(true);
+    if (hasChanges) {
+        ctx.putImageData(imgData, 0, 0);
+        setIsDirty(true);
+    }
   };
 
   const floodFill = (startX: number, startY: number, fillColorHex: string) => {
@@ -554,6 +586,15 @@ export const SliceEditor: React.FC<SliceEditorProps> = ({
       <Flex flex={1} overflow="hidden">
         {/* Left Toolbar */}
         <VStack p={2} spacing={2} borderRightWidth="1px" bg={useColorModeValue('white', 'gray.800')}>
+            <Tooltip label={t('editor.tool.hand', 'Hand (Pan)')} placement="right">
+                <IconButton
+                    aria-label="Hand"
+                    icon={<FaHandPaper />}
+                    isActive={activeTool === 'hand'}
+                    colorScheme={activeTool === 'hand' ? 'blue' : 'gray'}
+                    onClick={() => setActiveTool('hand')}
+                />
+            </Tooltip>
             <Tooltip label={t('editor.tool.pencil', 'Pencil (Left: Draw, Right: Erase)')} placement="right">
                 <IconButton
                     aria-label="Pencil"
@@ -572,6 +613,27 @@ export const SliceEditor: React.FC<SliceEditorProps> = ({
                     onClick={() => setActiveTool('eraser')}
                 />
             </Tooltip>
+            
+            {/* Brush Size Selector - Only show for Pencil/Eraser */}
+            {(activeTool === 'pencil' || activeTool === 'eraser') && (
+              <Tooltip label={`Brush Size: ${brushSize}x${brushSize}`} placement="right">
+                  <Button
+                      size="sm"
+                      w="40px"
+                      h="40px"
+                      p={0}
+                      variant="outline"
+                      colorScheme="blue"
+                      onClick={() => setBrushSize(prev => (prev === 1 ? 3 : prev === 3 ? 5 : 1) as 1|3|5)}
+                  >
+                      <VStack spacing={0}>
+                        <FaCircle size={brushSize === 1 ? 8 : brushSize === 3 ? 12 : 16} />
+                        <Text fontSize="xs">{brushSize}x</Text>
+                      </VStack>
+                  </Button>
+              </Tooltip>
+            )}
+
             <Tooltip label={t('editor.tool.bucket', 'Bucket Fill')} placement="right">
                 <IconButton
                     aria-label="Bucket"
@@ -590,13 +652,16 @@ export const SliceEditor: React.FC<SliceEditorProps> = ({
                     onClick={() => setActiveTool('eyedropper')}
                 />
             </Tooltip>
-            <Tooltip label={t('editor.tool.hand', 'Hand (Pan)')} placement="right">
+            
+            <Spacer />
+            <Divider />
+            
+            <Tooltip label={t('editor.settings', 'Settings')} placement="right">
                 <IconButton
-                    aria-label="Hand"
-                    icon={<FaHandPaper />}
-                    isActive={activeTool === 'hand'}
-                    colorScheme={activeTool === 'hand' ? 'blue' : 'gray'}
-                    onClick={() => setActiveTool('hand')}
+                    aria-label="Settings"
+                    icon={<FaCog />}
+                    variant="ghost"
+                    onClick={onSettingsOpen}
                 />
             </Tooltip>
         </VStack>
@@ -643,9 +708,28 @@ export const SliceEditor: React.FC<SliceEditorProps> = ({
                         touchAction: 'none'
                     }}
                     onContextMenu={(e) => e.preventDefault()}
-                 />
-             </Box>
-        </Box>
+             />
+             
+             {/* Grid Overlay */}
+             {showGrid && (
+               <Box
+                 position="absolute"
+                 top={0}
+                 left={0}
+                 width="100%"
+                 height="100%"
+                 pointerEvents="none"
+                 style={{
+                   backgroundImage: `
+                     linear-gradient(to right, rgba(128, 128, 128, 0.5) 1px, transparent 1px),
+                     linear-gradient(to bottom, rgba(128, 128, 128, 0.5) 1px, transparent 1px)
+                   `,
+                   backgroundSize: `${ZOOM_LEVEL}px ${ZOOM_LEVEL}px`
+                 }}
+               />
+             )}
+         </Box>
+    </Box>
 
         {/* Right Color Palette */}
         <VStack p={2} spacing={3} borderLeftWidth="1px" bg={useColorModeValue('white', 'gray.800')} w="60px">
@@ -767,6 +851,36 @@ export const SliceEditor: React.FC<SliceEditorProps> = ({
             </Button>
             <Button colorScheme="blue" onClick={() => { handleSave(); onCancel(); }}>
               {t('editor.save_and_exit', 'Save and Exit')}
+            </Button>
+          </ModalFooter>
+        </ModalContent>
+      </Modal>
+
+      {/* Settings Modal */}
+      <Modal isOpen={isSettingsOpen} onClose={onSettingsClose} isCentered>
+        <ModalOverlay />
+        <ModalContent>
+          <ModalHeader>{t('editor.settings', 'Settings')}</ModalHeader>
+          <ModalCloseButton />
+          <ModalBody>
+            <VStack spacing={4} align="stretch">
+              <FormControl display="flex" alignItems="center">
+                <FormLabel htmlFor="grid-view" mb="0">
+                  {t('editor.settings.grid_view', 'Grid View')}
+                </FormLabel>
+                <Switch 
+                    id="grid-view" 
+                    isChecked={showGrid} 
+                    onChange={(e) => setShowGrid(e.target.checked)} 
+                />
+              </FormControl>
+              
+              {/* You can add more settings here later */}
+            </VStack>
+          </ModalBody>
+          <ModalFooter>
+            <Button colorScheme="blue" onClick={onSettingsClose}>
+              {t('common.close', 'Close')}
             </Button>
           </ModalFooter>
         </ModalContent>
