@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams } from 'react-router-dom';
 import {
   Box, Flex, VStack, Text, IconButton, useDisclosure, Drawer, DrawerOverlay, 
@@ -83,7 +83,8 @@ export function ProjectEditor() {
   const [activeFile, setActiveFile] = useState<string | null>(null);
   const [fileContents, setFileContents] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
-  
+  const restoredIdRef = useRef<string | null>(null);
+
   // Sidebar state
   const { isOpen, onOpen, onClose } = useDisclosure();
   const { isOpen: isCreateModalOpen, onOpen: onCreateModalOpen, onClose: onCreateModalClose } = useDisclosure();
@@ -92,11 +93,84 @@ export function ProjectEditor() {
 
   useDocumentTitle(project ? project.name : 'Editor');
 
+  const PROJECT_STATE_KEY = (projectId: string) => `project_state_${projectId}`;
+
+  // Restore state
+  useEffect(() => {
+    if (id && id !== restoredIdRef.current) {
+      const savedState = localStorage.getItem(PROJECT_STATE_KEY(id));
+      if (savedState) {
+        try {
+          const { openFiles: savedOpenFiles, activeFile: savedActiveFile } = JSON.parse(savedState);
+          if (savedOpenFiles && Array.isArray(savedOpenFiles)) {
+            setOpenFiles(savedOpenFiles);
+          } else {
+            setOpenFiles([]);
+          }
+          if (savedActiveFile) {
+            setActiveFile(savedActiveFile);
+          } else {
+            setActiveFile(null);
+          }
+        } catch (e) {
+          console.error("Failed to restore project state", e);
+          setOpenFiles([]);
+          setActiveFile(null);
+        }
+      } else {
+        // New project or no saved state
+        setOpenFiles([]);
+        setActiveFile(null);
+      }
+      restoredIdRef.current = id;
+    }
+  }, [id]);
+
+  // Save state
+  useEffect(() => {
+    if (id && id === restoredIdRef.current) {
+      localStorage.setItem(PROJECT_STATE_KEY(id), JSON.stringify({ openFiles, activeFile }));
+    }
+  }, [id, openFiles, activeFile]);
+
   useEffect(() => {
     if (id) {
       loadProjectData(id);
     }
   }, [id]);
+
+  const loadFile = useCallback(async (projectId: string, filePath: string) => {
+    if (fileContents[filePath]) return;
+
+    try {
+      const content = await StorageService.getFile(projectId, filePath);
+      
+      if (content instanceof Blob) {
+        const url = URL.createObjectURL(content);
+        setFileContents(prev => ({ ...prev, [filePath]: url }));
+      } else {
+        toast({
+            title: t('common.error'),
+            description: `Failed to load image: ${filePath.split('/').pop()}`,
+            status: 'error',
+        });
+      }
+    } catch (error) {
+        console.error('Error loading file:', filePath, error);
+        toast({
+            title: t('common.error'),
+            description: `Failed to load image: ${filePath.split('/').pop()}`,
+            status: 'error',
+        });
+    }
+  }, [fileContents, t, toast]);
+
+  // Load content for active file
+  useEffect(() => {
+    if (activeFile && id && !fileContents[activeFile]) {
+        loadFile(id, activeFile);
+    }
+  }, [activeFile, id, loadFile, fileContents]);
 
   const loadProjectData = async (projectId: string) => {
     try {
@@ -112,7 +186,7 @@ export function ProjectEditor() {
       // Filter for .png files in font/ directory
       Object.keys(allFiles).forEach(path => {
         if (path.startsWith('font/') && path.endsWith('.png')) {
-          fileNodes.push({
+          fileNodes.push({ 
             name: path.split('/').pop() || path,
             path: path,
             type: 'file'
@@ -167,45 +241,6 @@ export function ProjectEditor() {
   const handleFileClick = async (file: FileNode) => {
     if (!openFiles.includes(file.path)) {
       setOpenFiles([...openFiles, file.path]);
-      
-      // Load content if not already loaded
-      if (!fileContents[file.path] && id) {
-        try {
-          const content = await StorageService.getFile(id, file.path);
-          console.log(`Loading file ${file.path}:`, content); // Debug log
-          
-          if (content instanceof Blob) {
-            console.log(`File ${file.path} is a Blob of size ${content.size} and type ${content.type}`);
-            const url = URL.createObjectURL(content);
-            console.log(`Created URL for ${file.path}: ${url}`);
-            setFileContents(prev => ({ ...prev, [file.path]: url }));
-          } else if (typeof content === 'string') {
-             console.log(`File ${file.path} is a string (unexpected for image)`);
-             // Try to convert string to blob if it looks like base64 or something? 
-             // But StorageService should return Blob for images if we saved them as Blobs.
-             // If it is a string, it might be corrupted data.
-             toast({
-                title: t('common.error'),
-                description: `Failed to load image: ${file.name} (Data format error)`,
-                status: 'error',
-            });
-          } else {
-            console.error('File content is not a Blob:', file.path, typeof content);
-            toast({
-                title: t('common.error'),
-                description: `Failed to load image: ${file.name} (Invalid format)`,
-                status: 'error',
-            });
-          }
-        } catch (error) {
-            console.error('Error loading file:', file.path, error);
-            toast({
-                title: t('common.error'),
-                description: `Failed to load image: ${file.name}`,
-                status: 'error',
-            });
-        }
-      }
     }
     setActiveFile(file.path);
     if (isMobile) onClose();

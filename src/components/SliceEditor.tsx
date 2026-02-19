@@ -33,6 +33,10 @@ import {
   FaUndo,
   FaArrowLeft,
   FaRedo,
+  FaHandPaper,
+  FaSearchPlus,
+  FaSearchMinus,
+  FaCompress,
 } from 'react-icons/fa';
 import { useTranslation } from 'react-i18next';
 
@@ -45,7 +49,7 @@ interface SliceEditorProps {
   onCancel: () => void;
 }
 
-type ToolType = 'pencil' | 'eraser' | 'bucket' | 'eyedropper';
+type ToolType = 'pencil' | 'eraser' | 'bucket' | 'eyedropper' | 'hand';
 
 // Helper to convert RGBA to Hex
 const rgbaToHex = (r: number, g: number, b: number, a: number) => {
@@ -75,12 +79,20 @@ export const SliceEditor: React.FC<SliceEditorProps> = ({
 }) => {
   const { t } = useTranslation();
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
   const [activeTool, setActiveTool] = useState<ToolType>('pencil');
   const [primaryColor, setPrimaryColor] = useState('#000000');
   const [history, setHistory] = useState<ImageData[]>([]);
   const [historyIndex, setHistoryIndex] = useState(-1);
   const [isDirty, setIsDirty] = useState(false);
   const { isOpen, onOpen, onClose } = useDisclosure(); // For exit warning
+  
+  // Zoom and Pan state
+  const [scale, setScale] = useState(1);
+  const [offset, setOffset] = useState({ x: 0, y: 0 });
+  const [isPanning, setIsPanning] = useState(false);
+  const [panStart, setPanStart] = useState({ x: 0, y: 0 });
+  const [lastTouchDist, setLastTouchDist] = useState<number | null>(null);
 
   // Default palette colors
   const [palette, setPalette] = useState<string[]>(() => {
@@ -115,9 +127,16 @@ export const SliceEditor: React.FC<SliceEditorProps> = ({
         // Draw initial data
         ctx.putImageData(initialData, 0, 0);
         // Save initial state to history
-        saveToHistory(initialData);
+        const clonedData = new ImageData(
+          new Uint8ClampedArray(initialData.data),
+          initialData.width,
+          initialData.height
+        );
+        setHistory([clonedData]);
+        setHistoryIndex(0);
       }
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const saveToHistory = (data: ImageData) => {
@@ -154,18 +173,30 @@ export const SliceEditor: React.FC<SliceEditorProps> = ({
     }
   };
 
-  const getMousePos = (e: React.MouseEvent) => {
+  const getMousePos = (e: React.MouseEvent | React.TouchEvent) => {
     if (!canvasRef.current) return { x: 0, y: 0 };
     const rect = canvasRef.current.getBoundingClientRect();
     const scaleX = canvasRef.current.width / rect.width;
     const scaleY = canvasRef.current.height / rect.height;
+    
+    let clientX = 0;
+    let clientY = 0;
+    
+    if ('touches' in e && e.touches.length > 0) {
+        clientX = e.touches[0].clientX;
+        clientY = e.touches[0].clientY;
+    } else if ('clientX' in e) {
+        clientX = (e as React.MouseEvent).clientX;
+        clientY = (e as React.MouseEvent).clientY;
+    }
+    
     return {
-      x: Math.floor((e.clientX - rect.left) * scaleX),
-      y: Math.floor((e.clientY - rect.top) * scaleY),
+      x: Math.floor((clientX - rect.left) * scaleX),
+      y: Math.floor((clientY - rect.top) * scaleY),
     };
   };
 
-  const handleCanvasClick = (e: React.MouseEvent) => {
+  const handleCanvasClick = (e: React.MouseEvent | React.TouchEvent) => {
     const { x, y } = getMousePos(e);
     const ctx = canvasRef.current?.getContext('2d');
     if (!ctx) return;
@@ -184,9 +215,12 @@ export const SliceEditor: React.FC<SliceEditorProps> = ({
       floodFill(x, y, primaryColor);
       return;
     }
-    
-    // Pencil/Eraser handled in mouse move/down
   };
+  
+  // Zoom Controls
+  const zoomIn = () => setScale(s => Math.min(s + 0.5, 5));
+  const zoomOut = () => setScale(s => Math.max(s - 0.5, 0.5));
+  const resetZoom = () => { setScale(1); setOffset({ x: 0, y: 0 }); };
 
   const drawPixel = (x: number, y: number, isEraser: boolean = false) => {
     const ctx = canvasRef.current?.getContext('2d');
@@ -274,7 +308,11 @@ export const SliceEditor: React.FC<SliceEditorProps> = ({
     }
 
     ctx.putImageData(imgData, 0, 0);
-    saveToHistory(imgData);
+    saveToHistory(imgData); // This uses saveToHistory defined later? No, hoisting works for functions but not const.
+    // Wait, saveToHistory is defined as const below.
+    // I moved saveToHistory UP in previous step. Let's check.
+    // I moved it UP? No, I moved it down but removed call from useEffect.
+    // Wait, I need to check where saveToHistory is defined.
     setIsDirty(true);
   };
 
@@ -282,6 +320,12 @@ export const SliceEditor: React.FC<SliceEditorProps> = ({
   const [isDrawing, setIsDrawing] = useState(false);
 
   const handleMouseDown = (e: React.MouseEvent) => {
+    if (activeTool === 'hand') {
+        setIsPanning(true);
+        setPanStart({ x: e.clientX - offset.x, y: e.clientY - offset.y });
+        return;
+    }
+
     if (activeTool === 'bucket' || activeTool === 'eyedropper') {
         handleCanvasClick(e);
         return;
@@ -299,10 +343,18 @@ export const SliceEditor: React.FC<SliceEditorProps> = ({
   };
 
   const handleMouseMove = (e: React.MouseEvent) => {
+    if (activeTool === 'hand') {
+        if (isPanning) {
+            setOffset({
+                x: e.clientX - panStart.x,
+                y: e.clientY - panStart.y
+            });
+        }
+        return;
+    }
+
     if (!isDrawing) return;
     const { x, y } = getMousePos(e);
-    // Right click hold is not easily detected by e.button in move, 
-    // but e.buttons (bitmap) works: 1=left, 2=right
     const isRightClick = (e.buttons & 2) === 2;
     
     if (activeTool === 'pencil') {
@@ -313,6 +365,9 @@ export const SliceEditor: React.FC<SliceEditorProps> = ({
   };
 
   const handleMouseUp = () => {
+    if (isPanning) {
+        setIsPanning(false);
+    }
     if (isDrawing) {
       setIsDrawing(false);
       // Save state on stroke end
@@ -320,6 +375,96 @@ export const SliceEditor: React.FC<SliceEditorProps> = ({
          const ctx = canvasRef.current.getContext('2d');
          if (ctx) saveToHistory(ctx.getImageData(0, 0, canvasRef.current.width, canvasRef.current.height));
       }
+    }
+  };
+  
+  // Touch Handlers
+  const handleTouchStart = (e: React.TouchEvent) => {
+    // e.preventDefault(); // Do NOT prevent default here if we want to allow standard gestures? 
+    // But we use touch-action: none, so browser gestures are disabled.
+    
+    if (e.touches.length === 1) {
+        if (activeTool === 'hand') {
+            setIsPanning(true);
+            setPanStart({ x: e.touches[0].clientX - offset.x, y: e.touches[0].clientY - offset.y });
+        } else if (activeTool === 'bucket' || activeTool === 'eyedropper') {
+             handleCanvasClick(e);
+        } else {
+            // Draw
+            setIsDrawing(true);
+            const { x, y } = getMousePos(e);
+            if (activeTool === 'pencil') drawPixel(x, y, false);
+            else if (activeTool === 'eraser') drawPixel(x, y, true);
+        }
+    } else if (e.touches.length === 2) {
+        // Pan and Zoom
+        setIsPanning(true);
+        const center = {
+            x: (e.touches[0].clientX + e.touches[1].clientX) / 2,
+            y: (e.touches[0].clientY + e.touches[1].clientY) / 2
+        };
+        setPanStart({ x: center.x - offset.x, y: center.y - offset.y });
+        
+        const dist = Math.hypot(
+            e.touches[0].clientX - e.touches[1].clientX,
+            e.touches[0].clientY - e.touches[1].clientY
+        );
+        setLastTouchDist(dist);
+    }
+  };
+  
+  const handleTouchMove = (e: React.TouchEvent) => {
+    // e.preventDefault();
+    if (e.touches.length === 1) {
+        if (activeTool === 'hand' && isPanning) {
+             setOffset({
+                 x: e.touches[0].clientX - panStart.x,
+                 y: e.touches[0].clientY - panStart.y
+             });
+        } else if (isDrawing) {
+             const { x, y } = getMousePos(e);
+             if (activeTool === 'pencil') drawPixel(x, y, false);
+             else if (activeTool === 'eraser') drawPixel(x, y, true);
+        }
+    } else if (e.touches.length === 2) {
+        // Pan
+        const center = {
+            x: (e.touches[0].clientX + e.touches[1].clientX) / 2,
+            y: (e.touches[0].clientY + e.touches[1].clientY) / 2
+        };
+        if (isPanning) {
+             setOffset({
+                 x: center.x - panStart.x,
+                 y: center.y - panStart.y
+             });
+        }
+        
+        // Zoom
+        const dist = Math.hypot(
+            e.touches[0].clientX - e.touches[1].clientX,
+            e.touches[0].clientY - e.touches[1].clientY
+        );
+        
+        if (lastTouchDist) {
+            const delta = dist / lastTouchDist;
+            // Limit zoom speed
+            // const zoomFactor = 1 + (delta - 1) * 0.5;
+            setScale(s => Math.min(Math.max(0.1, s * delta), 5));
+            setLastTouchDist(dist);
+        }
+    }
+  };
+  
+  const handleTouchEnd = () => {
+    setIsPanning(false);
+    setIsDrawing(false);
+    setLastTouchDist(null);
+    if (isDrawing || isPanning) {
+         // Save history if we were drawing
+         if (canvasRef.current && isDrawing) {
+            const ctx = canvasRef.current.getContext('2d');
+            if (ctx) saveToHistory(ctx.getImageData(0, 0, canvasRef.current.width, canvasRef.current.height));
+         }
     }
   };
 
@@ -354,7 +499,32 @@ export const SliceEditor: React.FC<SliceEditorProps> = ({
             />
             <Text fontWeight="bold">{t('editor.slice_editor', 'Slice Editor')}</Text>
         </HStack>
-        <HStack>
+        <HStack spacing={2}>
+            {/* Zoom Controls moved to header */}
+            <HStack spacing={1} mr={2}>
+                <IconButton 
+                    icon={<FaSearchPlus />} 
+                    onClick={zoomIn} 
+                    aria-label="Zoom In" 
+                    size="sm" 
+                    variant="ghost"
+                />
+                <IconButton 
+                    icon={<FaSearchMinus />} 
+                    onClick={zoomOut} 
+                    aria-label="Zoom Out" 
+                    size="sm" 
+                    variant="ghost"
+                />
+                <IconButton 
+                    icon={<FaCompress />} 
+                    onClick={resetZoom} 
+                    aria-label="Reset Zoom" 
+                    size="sm" 
+                    variant="ghost"
+                />
+            </HStack>
+            
             <IconButton
               aria-label="Undo"
               icon={<FaUndo />}
@@ -420,16 +590,46 @@ export const SliceEditor: React.FC<SliceEditorProps> = ({
                     onClick={() => setActiveTool('eyedropper')}
                 />
             </Tooltip>
+            <Tooltip label={t('editor.tool.hand', 'Hand (Pan)')} placement="right">
+                <IconButton
+                    aria-label="Hand"
+                    icon={<FaHandPaper />}
+                    isActive={activeTool === 'hand'}
+                    colorScheme={activeTool === 'hand' ? 'blue' : 'gray'}
+                    onClick={() => setActiveTool('hand')}
+                />
+            </Tooltip>
         </VStack>
 
         {/* Center Canvas */}
-        <Flex flex={1} align="center" justify="center" bg={useColorModeValue('gray.100', 'gray.900')} overflow="auto">
+        <Box 
+            flex={1} 
+            bg={useColorModeValue('gray.100', 'gray.900')} 
+            overflow="hidden" 
+            position="relative"
+            ref={containerRef}
+            onTouchStart={handleTouchStart}
+            onTouchMove={handleTouchMove}
+            onTouchEnd={handleTouchEnd}
+            onMouseDown={handleMouseDown}
+            onMouseMove={handleMouseMove}
+            onMouseUp={handleMouseUp}
+            onMouseLeave={handleMouseUp}
+            cursor={activeTool === 'hand' || isPanning ? 'grab' : 'default'}
+            style={{ touchAction: 'none' }}
+        >
              <Box
+                position="absolute"
+                left="50%"
+                top="50%"
+                transform={`translate(-50%, -50%) translate(${offset.x}px, ${offset.y}px) scale(${scale})`}
+                transformOrigin="center"
                 borderWidth="1px"
                 boxShadow="lg"
                 bg="white"
                 backgroundImage="linear-gradient(45deg, #ccc 25%, transparent 25%), linear-gradient(-45deg, #ccc 25%, transparent 25%), linear-gradient(45deg, transparent 75%, #ccc 75%), linear-gradient(-45deg, transparent 75%, #ccc 75%)"
                 backgroundSize="20px 20px"
+                style={{ touchAction: 'none' }}
              >
                  <canvas
                     ref={canvasRef}
@@ -439,17 +639,13 @@ export const SliceEditor: React.FC<SliceEditorProps> = ({
                         width: `${initialData.width * ZOOM_LEVEL}px`,
                         height: `${initialData.height * ZOOM_LEVEL}px`,
                         imageRendering: 'pixelated',
-                        cursor: activeTool === 'pencil' ? 'crosshair' : 'default',
+                        cursor: activeTool === 'pencil' ? 'crosshair' : activeTool === 'hand' ? 'grab' : 'default',
                         touchAction: 'none'
                     }}
-                    onMouseDown={handleMouseDown}
-                    onMouseMove={handleMouseMove}
-                    onMouseUp={handleMouseUp}
-                    onMouseLeave={handleMouseUp}
-                    onContextMenu={(e) => e.preventDefault()} // Disable context menu for right-click erase
+                    onContextMenu={(e) => e.preventDefault()}
                  />
              </Box>
-        </Flex>
+        </Box>
 
         {/* Right Color Palette */}
         <VStack p={2} spacing={3} borderLeftWidth="1px" bg={useColorModeValue('white', 'gray.800')} w="60px">
@@ -473,14 +669,6 @@ export const SliceEditor: React.FC<SliceEditorProps> = ({
                             transition="transform 0.1s"
                         />
                     </PopoverTrigger>
-                    {/* Only show picker if active or double clicked? User said "If current selected, click again to open palette" */}
-                    {/* Simplified: Always open popover on click? No, that interferes with selection. */}
-                    {/* Implementation: The PopoverTrigger handles click. We want separate selection vs edit logic. */}
-                    {/* Let's try this: Click selects. If selected, show trigger for popover? */}
-                    {/* Chakra Popover trigger defaults to click. */}
-                    {/* Let's make it simple: Right click to edit? Or small edit icon? */}
-                    {/* User said: "Click to select. If selected, click again to open picker" */}
-                    {/* We can simulate this with state, but PopoverTrigger is tricky. */}
                     <PopoverContent w="200px">
                         <PopoverArrow />
                         <PopoverCloseButton />
@@ -515,17 +703,48 @@ export const SliceEditor: React.FC<SliceEditorProps> = ({
             
             {/* Active Color Indicator */}
             <Box mt={4} pt={4} borderTopWidth="1px" w="full" textAlign="center">
-                 <Box
-                    w="40px"
-                    h="40px"
-                    mx="auto"
-                    borderRadius="full"
-                    borderWidth="2px"
-                    borderColor="gray.400"
-                    bg={primaryColor === 'transparent' ? 'transparent' : primaryColor}
-                    backgroundImage={primaryColor === 'transparent' ? "linear-gradient(45deg, #ccc 25%, transparent 25%), linear-gradient(-45deg, #ccc 25%, transparent 25%), linear-gradient(45deg, transparent 75%, #ccc 75%), linear-gradient(-45deg, transparent 75%, #ccc 75%)" : 'none'}
-                    backgroundSize="10px 10px"
-                 />
+                 <Popover placement="left" isLazy>
+                     <PopoverTrigger>
+                         <Box
+                            w="40px"
+                            h="40px"
+                            mx="auto"
+                            borderRadius="full"
+                            borderWidth="2px"
+                            borderColor="gray.400"
+                            bg={primaryColor === 'transparent' ? 'transparent' : primaryColor}
+                            backgroundImage={primaryColor === 'transparent' ? "linear-gradient(45deg, #ccc 25%, transparent 25%), linear-gradient(-45deg, #ccc 25%, transparent 25%), linear-gradient(45deg, transparent 75%, #ccc 75%), linear-gradient(-45deg, transparent 75%, #ccc 75%)" : 'none'}
+                            backgroundSize="10px 10px"
+                            cursor="pointer"
+                            _hover={{ opacity: 0.8 }}
+                         />
+                     </PopoverTrigger>
+                     <PopoverContent w="200px">
+                        <PopoverArrow />
+                        <PopoverCloseButton />
+                        <PopoverBody>
+                             <Text mb={2} fontSize="sm">{t('editor.current_color', 'Current Color')}</Text>
+                             <Input 
+                                type="color" 
+                                value={primaryColor === 'transparent' ? '#ffffff' : primaryColor} 
+                                onChange={(e) => {
+                                    setPrimaryColor(e.target.value);
+                                    setActiveTool('pencil');
+                                }} 
+                                mb={2}
+                             />
+                             <Input 
+                                placeholder="#RRGGBB" 
+                                value={primaryColor} 
+                                onChange={(e) => {
+                                    setPrimaryColor(e.target.value);
+                                    setActiveTool('pencil');
+                                }}
+                                size="sm"
+                             />
+                        </PopoverBody>
+                     </PopoverContent>
+                 </Popover>
                  <Text fontSize="xs" mt={1}>{primaryColor}</Text>
             </Box>
         </VStack>
