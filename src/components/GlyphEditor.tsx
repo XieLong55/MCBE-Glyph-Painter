@@ -13,10 +13,12 @@ import { FaPen, FaCode, FaCopy, FaSearchPlus,
   FaChevronLeft
 } from 'react-icons/fa';
 import { useTranslation } from 'react-i18next';
+import { SliceEditor } from './SliceEditor';
 
 interface GlyphEditorProps {
   fileUrl: string;
   filename: string;
+  onSave?: (blob: Blob) => Promise<void>;
 }
 
 const EditorMode = {
@@ -27,7 +29,7 @@ const EditorMode = {
 
 type EditorMode = typeof EditorMode[keyof typeof EditorMode];
 
-export const GlyphEditor: React.FC<GlyphEditorProps> = ({ fileUrl, filename }) => {
+export const GlyphEditor: React.FC<GlyphEditorProps> = ({ fileUrl, filename, onSave }) => {
   const { t } = useTranslation();
   const toast = useToast();
   const [scale, setScale] = useState(1);
@@ -38,6 +40,9 @@ export const GlyphEditor: React.FC<GlyphEditorProps> = ({ fileUrl, filename }) =
   const containerRef = useRef<HTMLDivElement>(null);
   const [imageSize, setImageSize] = useState({ width: 0, height: 0 });
   const [isToolbarCollapsed, setIsToolbarCollapsed] = useState(false);
+  
+  // Slice Editor State
+  const [editingSlice, setEditingSlice] = useState<{ r: number, c: number, data: ImageData } | null>(null);
 
   // Reset state when file changes
   useEffect(() => {
@@ -59,37 +64,22 @@ export const GlyphEditor: React.FC<GlyphEditorProps> = ({ fileUrl, filename }) =
        const newScale = Math.min(Math.max(0.1, scale + delta), 10);
        setScale(newScale);
     } else {
-        // Pan
-        // If not zooming, maybe we don't want to capture wheel unless user holds space or something?
-        // But user said "Desktop use mouse wheel" for zoom. Usually wheel is scroll.
-        // Let's implement wheel = zoom as requested.
+        // Pan or Zoom based on preference. User requested Zoom.
         e.preventDefault();
-        // Standard mouse wheel step is often large, smooth it out
-        // Reduced zoom step as per user request ("rate is too high")
         const zoomStep = 0.05; 
         const newScale = Math.min(Math.max(0.1, scale + (e.deltaY > 0 ? -zoomStep : zoomStep)), 10);
         setScale(newScale);
     }
   };
   
-  // Handle manual scrollbar change
   const handleScrollX = (e: React.ChangeEvent<HTMLInputElement>) => {
-    // Map slider value (0-100) to X position range
-    // Range depends on zoomed image width vs container width
-    // This is a simplified "pan" slider
     const val = parseFloat(e.target.value);
-    // Let's say range is +/- image width
     const range = imageSize.width * scale; 
     const newX = ((val - 50) / 50) * range;
-    setPosition(prev => ({ ...prev, x: -newX })); // Invert for natural feeling? No, let's test.
-    // If slider is "position", then moving right (val > 50) should move view right (content left).
+    setPosition(prev => ({ ...prev, x: -newX }));
   };
 
   const handleMouseDown = (e: React.MouseEvent) => {
-    // Only drag if middle mouse or space held? Or always drag?
-    // Let's implement drag always for now as we don't have other interactions on the background
-    // But check if clicking on scrollbar or controls? Controls are outside container.
-    // So inside container, yes drag.
     setIsDragging(true);
     setDragStart({ x: e.clientX - position.x, y: e.clientY - position.y });
   };
@@ -107,35 +97,45 @@ export const GlyphEditor: React.FC<GlyphEditorProps> = ({ fileUrl, filename }) =
     setIsDragging(false);
   };
 
-  const handleGridClick = (e: React.MouseEvent, row: number, col: number) => {
+  const handleGridClick = async (e: React.MouseEvent, row: number, col: number) => {
     e.stopPropagation(); // Prevent drag start
-    if (mode === EditorMode.CODE_POINT) {
-      // Logic:
-      // 1. Parse filename for base prefix. E.g., glyph_E0.png -> E0
-      // 2. Base = 0xE000
-      // 3. Offset = row * 16 + col
-      // 4. Char Code = Base + Offset
+    
+    if (mode === EditorMode.EDIT) {
+        // Extract Slice Data
+        const img = new Image();
+        img.src = fileUrl;
+        
+        // Ensure image is loaded before drawing
+        if (!img.complete) {
+            await new Promise((resolve) => { img.onload = resolve; });
+        }
+        
+        const canvas = document.createElement('canvas');
+        canvas.width = imageSize.width;
+        canvas.height = imageSize.height;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) return;
+        
+        ctx.drawImage(img, 0, 0);
+        
+        // Calculate cell size
+        const cellWidth = imageSize.width / 16;
+        const cellHeight = imageSize.height / 16;
 
+        // Ensure we don't go out of bounds (though grid should prevent this)
+        const sliceData = ctx.getImageData(col * cellWidth, row * cellHeight, cellWidth, cellHeight);
+        
+        setEditingSlice({
+            r: row,
+            c: col,
+            data: sliceData
+        });
+        
+    } else if (mode === EditorMode.CODE_POINT) {
       const match = filename.match(/glyph_([0-9A-Fa-f]+)/);
       if (match) {
         const prefixHex = match[1];
-        // If prefix is just "E", assumes "E0"? Or user meant "E?" pattern where ? is the hex digit?
-        // User example: "E0" -> 00 8A...
-        // If filename is glyph_E0.png, it usually means the page starting at U+E000.
-        // If filename is glyph_E1.png, it starts at U+E100.
-        // So we parse the hex, shift left by 8 bits (multiply by 256).
-        
         const base = parseInt(prefixHex, 16);
-        
-        // If the user names it "E0", 0xE0 * 256 = 0xE000. Correct.
-        // If the user names it "E", 0xE * 256 = 0xE00. Too small?
-        // Standard MCBE glyphs are usually E0, E1, etc. (Private Use Area).
-        // Let's assume the filename part IS the high byte(s).
-        
-        // However, `parseInt('E0', 16)` is 224. 224 * 256 = 57344 (0xE000).
-        // `parseInt('E1', 16)` is 225. 225 * 256 = 57600 (0xE100).
-        // This logic holds for standard glyph_XX.png naming.
-        
         const pageStart = base * 256;
         const offset = row * 16 + col;
         const charCode = pageStart + offset;
@@ -159,17 +159,43 @@ export const GlyphEditor: React.FC<GlyphEditorProps> = ({ fileUrl, filename }) =
       }
     }
   };
+  
+  const handleSliceSave = async (newData: ImageData) => {
+      if (!editingSlice || !onSave) return;
+      
+      const { r, c } = editingSlice;
+      
+      const canvas = document.createElement('canvas');
+      canvas.width = imageSize.width;
+      canvas.height = imageSize.height;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) return;
+      
+      // Load current image
+      const img = new Image();
+      img.src = fileUrl;
+      await img.decode();
+      ctx.drawImage(img, 0, 0);
+      
+      // Update slice
+      const cellWidth = imageSize.width / 16;
+      const cellHeight = imageSize.height / 16;
+      ctx.putImageData(newData, c * cellWidth, r * cellHeight);
+      
+      // Save
+      canvas.toBlob(async (blob) => {
+          if (blob) {
+              await onSave(blob);
+              setEditingSlice(null);
+          }
+      }, 'image/png');
+  };
 
   // Render Grid
   const renderGrid = () => {
     const cells = [];
     const rows = 16;
     const cols = 16;
-    
-    // We want the grid to cover the image.
-    // If image is 256x256, each cell is 16x16.
-    // We can use CSS grid or absolute positioning.
-    // Percentage based is safer for scaling. 100% / 16 = 6.25%
     
     for (let r = 0; r < rows; r++) {
       for (let c = 0; c < cols; c++) {
@@ -194,6 +220,16 @@ export const GlyphEditor: React.FC<GlyphEditorProps> = ({ fileUrl, filename }) =
     }
     return cells;
   };
+  
+  if (editingSlice) {
+      return (
+          <SliceEditor 
+            initialData={editingSlice.data}
+            onSave={handleSliceSave}
+            onCancel={() => setEditingSlice(null)}
+          />
+      );
+  }
 
   return (
     <Flex h="full" overflow="hidden" direction="column">
@@ -301,7 +337,6 @@ export const GlyphEditor: React.FC<GlyphEditorProps> = ({ fileUrl, filename }) =
                 variant={mode === EditorMode.EDIT ? 'solid' : 'ghost'}
                 colorScheme={mode === EditorMode.EDIT ? 'blue' : 'gray'}
                 onClick={() => setMode(EditorMode.EDIT)}
-                isDisabled={true} // Not implemented yet
               />
            </Tooltip>
            

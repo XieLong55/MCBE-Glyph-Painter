@@ -67,7 +67,17 @@ const resources = {
       "editor.mode.codepoint": "Code Point Mode",
       "editor.mode.copy": "Copy Mode",
       "editor.copied": "Copied",
-      "editor.invalid_filename_pattern": "Filename does not match glyph_XX pattern"
+      "editor.invalid_filename_pattern": "Filename does not match glyph_XX pattern",
+      "editor.slice_editor": "Slice Editor",
+      "editor.tool.pencil": "Pencil",
+      "editor.tool.eraser": "Eraser",
+      "editor.tool.bucket": "Bucket Fill",
+      "editor.tool.eyedropper": "Eyedropper",
+      "editor.colors": "Colors",
+      "editor.unsaved_changes": "You have unsaved changes. Do you want to save before exiting?",
+      "editor.exit_without_saving": "Exit without saving",
+      "editor.save_and_exit": "Save and Exit",
+      "common.warning": "Warning"
     }
   },
   zh: {
@@ -134,7 +144,17 @@ const resources = {
       "editor.mode.codepoint": "码点模式",
       "editor.mode.copy": "复制模式",
       "editor.copied": "已复制",
-      "editor.invalid_filename_pattern": "文件名不符合 glyph_XX 格式"
+      "editor.invalid_filename_pattern": "文件名不符合 glyph_XX 格式",
+      "editor.slice_editor": "切片编辑器",
+      "editor.tool.pencil": "铅笔 (左键: 绘制, 右键: 擦除)",
+      "editor.tool.eraser": "橡皮擦",
+      "editor.tool.bucket": "油漆桶",
+      "editor.tool.eyedropper": "吸管",
+      "editor.colors": "调色板",
+      "editor.unsaved_changes": "您有未保存的更改，是否在退出前保存？",
+      "editor.exit_without_saving": "不保存退出",
+      "editor.save_and_exit": "保存并退出",
+      "common.warning": "警告"
     }
   }
 };

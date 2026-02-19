@@ -389,6 +389,32 @@ export function ProjectEditor() {
             <GlyphEditor 
               fileUrl={fileContents[activeFile]} 
               filename={activeFile.split('/').pop() || activeFile} 
+              onSave={async (blob) => {
+                if (!project || !activeFile) return;
+                try {
+                  await StorageService.saveFile(project.uuid, activeFile, blob);
+                  // Update URL to force refresh
+                  const newUrl = URL.createObjectURL(blob);
+                  setFileContents(prev => {
+                     // Revoke old URL to prevent memory leaks
+                     if (prev[activeFile]) URL.revokeObjectURL(prev[activeFile]);
+                     return { ...prev, [activeFile]: newUrl };
+                  });
+                  toast({
+                    title: t('common.success'),
+                    description: t('common.saved', 'Saved'),
+                    status: 'success',
+                    duration: 2000,
+                  });
+                } catch (e) {
+                  console.error('Failed to save file', e);
+                  toast({
+                    title: t('common.error'),
+                    description: 'Failed to save file',
+                    status: 'error',
+                  });
+                }
+              }}
             />
           ) : (
             <Center h="full" color="gray.400" flexDirection="column">
