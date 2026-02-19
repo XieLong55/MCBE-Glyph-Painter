@@ -83,14 +83,29 @@ export const SliceEditor: React.FC<SliceEditorProps> = ({
   const { isOpen, onOpen, onClose } = useDisclosure(); // For exit warning
 
   // Default palette colors
-  const [palette, setPalette] = useState([
-    '#000000', // Black
-    '#FFFFFF', // White
-    '#FF0000', // Red
-    '#00FF00', // Green
-    '#0000FF', // Blue
-    'transparent' // Transparent
-  ]);
+  const [palette, setPalette] = useState<string[]>(() => {
+    const savedPalette = localStorage.getItem('sliceEditorPalette');
+    if (savedPalette) {
+      try {
+        return JSON.parse(savedPalette);
+      } catch (e) {
+        console.error('Failed to parse saved palette', e);
+      }
+    }
+    return [
+      '#000000', // Black
+      '#FFFFFF', // White
+      '#FF0000', // Red
+      '#00FF00', // Green
+      '#0000FF', // Blue
+      'transparent' // Transparent
+    ];
+  });
+
+  // Save palette whenever it changes
+  useEffect(() => {
+    localStorage.setItem('sliceEditorPalette', JSON.stringify(palette));
+  }, [palette]);
 
   // Initialize canvas
   useEffect(() => {

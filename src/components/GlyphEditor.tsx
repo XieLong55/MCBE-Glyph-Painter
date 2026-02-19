@@ -34,7 +34,14 @@ export const GlyphEditor: React.FC<GlyphEditorProps> = ({ fileUrl, filename, onS
   const toast = useToast();
   const [scale, setScale] = useState(1);
   const [position, setPosition] = useState({ x: 0, y: 0 });
-  const [mode, setMode] = useState<EditorMode>(EditorMode.CODE_POINT);
+  const [mode, setMode] = useState<EditorMode>(() => {
+    const savedMode = localStorage.getItem('glyphEditorMode');
+    return (savedMode as EditorMode) || EditorMode.CODE_POINT;
+  });
+
+  useEffect(() => {
+    localStorage.setItem('glyphEditorMode', mode);
+  }, [mode]);
   const [isDragging, setIsDragging] = useState(false);
   const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
   const containerRef = useRef<HTMLDivElement>(null);
