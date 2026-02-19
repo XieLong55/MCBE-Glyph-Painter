@@ -7,7 +7,11 @@ import {
   useToast,
   VStack,
 } from '@chakra-ui/react';
-import { FaPen, FaCode, FaCopy, FaSearchPlus, FaSearchMinus } from 'react-icons/fa';
+import { FaPen, FaCode, FaCopy, FaSearchPlus, 
+  FaSearchMinus,
+  FaChevronRight,
+  FaChevronLeft
+} from 'react-icons/fa';
 import { useTranslation } from 'react-i18next';
 
 interface GlyphEditorProps {
@@ -33,6 +37,7 @@ export const GlyphEditor: React.FC<GlyphEditorProps> = ({ fileUrl, filename }) =
   const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
   const containerRef = useRef<HTMLDivElement>(null);
   const [imageSize, setImageSize] = useState({ width: 0, height: 0 });
+  const [isToolbarCollapsed, setIsToolbarCollapsed] = useState(false);
 
   // Reset state when file changes
   useEffect(() => {
@@ -60,14 +65,31 @@ export const GlyphEditor: React.FC<GlyphEditorProps> = ({ fileUrl, filename }) =
         // Let's implement wheel = zoom as requested.
         e.preventDefault();
         // Standard mouse wheel step is often large, smooth it out
-        const newScale = Math.min(Math.max(0.1, scale + (e.deltaY > 0 ? -0.1 : 0.1)), 10);
+        // Reduced zoom step as per user request ("rate is too high")
+        const zoomStep = 0.05; 
+        const newScale = Math.min(Math.max(0.1, scale + (e.deltaY > 0 ? -zoomStep : zoomStep)), 10);
         setScale(newScale);
     }
+  };
+  
+  // Handle manual scrollbar change
+  const handleScrollX = (e: React.ChangeEvent<HTMLInputElement>) => {
+    // Map slider value (0-100) to X position range
+    // Range depends on zoomed image width vs container width
+    // This is a simplified "pan" slider
+    const val = parseFloat(e.target.value);
+    // Let's say range is +/- image width
+    const range = imageSize.width * scale; 
+    const newX = ((val - 50) / 50) * range;
+    setPosition(prev => ({ ...prev, x: -newX })); // Invert for natural feeling? No, let's test.
+    // If slider is "position", then moving right (val > 50) should move view right (content left).
   };
 
   const handleMouseDown = (e: React.MouseEvent) => {
     // Only drag if middle mouse or space held? Or always drag?
     // Let's implement drag always for now as we don't have other interactions on the background
+    // But check if clicking on scrollbar or controls? Controls are outside container.
+    // So inside container, yes drag.
     setIsDragging(true);
     setDragStart({ x: e.clientX - position.x, y: e.clientY - position.y });
   };
@@ -174,131 +196,171 @@ export const GlyphEditor: React.FC<GlyphEditorProps> = ({ fileUrl, filename }) =
   };
 
   return (
-    <Flex h="full" overflow="hidden">
-      {/* Canvas Area */}
-      <Box
-        ref={containerRef}
-        flex={1}
-        bg="gray.100"
-        _dark={{ bg: 'gray.900' }}
-        position="relative"
-        overflow="hidden"
-        onWheel={handleWheel}
-        onMouseDown={handleMouseDown}
-        onMouseMove={handleMouseMove}
-        onMouseUp={handleMouseUp}
-        onMouseLeave={handleMouseUp}
-        cursor={isDragging ? 'grabbing' : 'grab'}
-      >
+    <Flex h="full" overflow="hidden" direction="column">
+      <Flex flex={1} overflow="hidden">
+        {/* Canvas Area */}
         <Box
-          position="absolute"
-          left="50%"
-          top="50%"
-          transform={`translate(-50%, -50%) translate(${position.x}px, ${position.y}px) scale(${scale})`}
-          transformOrigin="center"
-          transition="transform 0.1s ease-out"
+          ref={containerRef}
+          flex={1}
+          bg="gray.100"
+          _dark={{ bg: 'gray.900' }}
+          position="relative"
+          overflow="hidden"
+          onWheel={handleWheel}
+          onMouseDown={handleMouseDown}
+          onMouseMove={handleMouseMove}
+          onMouseUp={handleMouseUp}
+          onMouseLeave={handleMouseUp}
+          cursor={isDragging ? 'grabbing' : 'grab'}
+          style={{ touchAction: 'none' }} // Important for preventing browser zoom/scroll on mobile
         >
-          {/* Image Container with Checkboard */}
           <Box
-             position="relative"
-             bg="white" 
-             _dark={{ bg: 'gray.800' }}
-             backgroundImage="linear-gradient(45deg, #ccc 25%, transparent 25%), linear-gradient(-45deg, #ccc 25%, transparent 25%), linear-gradient(45deg, transparent 75%, #ccc 75%), linear-gradient(-45deg, transparent 75%, #ccc 75%)"
-             backgroundSize="20px 20px"
-             backgroundPosition="0 0, 0 10px, 10px -10px, -10px 0px"
-             boxShadow="lg"
-             width={imageSize.width ? `${imageSize.width}px` : 'auto'}
-             height={imageSize.height ? `${imageSize.height}px` : 'auto'}
+            position="absolute"
+            left="50%"
+            top="50%"
+            transform={`translate(-50%, -50%) translate(${position.x}px, ${position.y}px) scale(${scale})`}
+            transformOrigin="center"
+            transition="transform 0.1s ease-out"
           >
-             <img
-               src={fileUrl}
-               alt={filename}
-               style={{ 
-                   imageRendering: 'pixelated', // Crucial for pixel art/sprites
-                   width: '100%',
-                   height: '100%',
-                   display: 'block',
-                   pointerEvents: 'none' // Let clicks pass through to grid
-               }}
-               draggable={false}
-             />
-             
-             {/* Overlay Grid */}
-             <Box position="absolute" top={0} left={0} right={0} bottom={0}>
-                {renderGrid()}
-             </Box>
+            {/* Image Container with Checkboard */}
+            <Box
+               position="relative"
+               bg="white" 
+               _dark={{ bg: 'gray.800' }}
+               backgroundImage="linear-gradient(45deg, #ccc 25%, transparent 25%), linear-gradient(-45deg, #ccc 25%, transparent 25%), linear-gradient(45deg, transparent 75%, #ccc 75%), linear-gradient(-45deg, transparent 75%, #ccc 75%)"
+               backgroundSize="20px 20px"
+               backgroundPosition="0 0, 0 10px, 10px -10px, -10px 0px"
+               boxShadow="lg"
+               width={imageSize.width ? `${imageSize.width}px` : 'auto'}
+               height={imageSize.height ? `${imageSize.height}px` : 'auto'}
+            >
+               <img
+                 src={fileUrl}
+                 alt={filename}
+                 style={{ 
+                     imageRendering: 'pixelated', // Crucial for pixel art/sprites
+                     width: '100%',
+                     height: '100%',
+                     display: 'block',
+                     pointerEvents: 'none' // Let clicks pass through to grid
+                 }}
+                 draggable={false}
+               />
+               
+               {/* Overlay Grid */}
+               <Box position="absolute" top={0} left={0} right={0} bottom={0}>
+                  {renderGrid()}
+               </Box>
+            </Box>
+          </Box>
+          
+          {/* Info Overlay */}
+          <Box position="absolute" bottom={4} left={4} bg="blackAlpha.700" color="white" px={2} py={1} borderRadius="md" fontSize="xs">
+              {Math.round(scale * 100)}% | {imageSize.width}x{imageSize.height}
           </Box>
         </Box>
-        
-        {/* Info Overlay */}
-        <Box position="absolute" bottom={4} left={4} bg="blackAlpha.700" color="white" px={2} py={1} borderRadius="md" fontSize="xs">
-            {Math.round(scale * 100)}% | {imageSize.width}x{imageSize.height}
-        </Box>
+
+        {/* Right Toolbar */}
+        <Flex
+          direction="column"
+          w={isToolbarCollapsed ? "0" : "50px"}
+          bg="white"
+          _dark={{ bg: 'gray.800' }}
+          borderLeftWidth={isToolbarCollapsed ? "0" : "1px"}
+          transition="width 0.2s"
+          position="relative"
+          zIndex={10}
+        >
+          {/* Toggle Button */}
+          <IconButton
+            aria-label="Toggle Toolbar"
+            icon={isToolbarCollapsed ? <FaChevronLeft /> : <FaChevronRight />}
+            size="xs"
+            position="absolute"
+            left="-20px"
+            top="50%"
+            transform="translateY(-50%)"
+            onClick={() => setIsToolbarCollapsed(!isToolbarCollapsed)}
+            zIndex={11}
+            borderRightRadius={0}
+            borderLeftRadius="md"
+            opacity={0.8}
+            _hover={{ opacity: 1 }}
+          />
+          
+          <VStack
+             spacing={2}
+             py={4}
+             display={isToolbarCollapsed ? "none" : "flex"}
+             overflow="hidden"
+          >
+           <Tooltip label={t('editor.mode.edit', 'Edit Mode')} placement="left">
+              <IconButton
+                aria-label="Edit"
+                icon={<FaPen />}
+                variant={mode === EditorMode.EDIT ? 'solid' : 'ghost'}
+                colorScheme={mode === EditorMode.EDIT ? 'blue' : 'gray'}
+                onClick={() => setMode(EditorMode.EDIT)}
+                isDisabled={true} // Not implemented yet
+              />
+           </Tooltip>
+           
+           <Tooltip label={t('editor.mode.codepoint', 'Code Point Mode')} placement="left">
+              <IconButton
+                aria-label="Code Point"
+                icon={<FaCode />}
+                variant={mode === EditorMode.CODE_POINT ? 'solid' : 'ghost'}
+                colorScheme={mode === EditorMode.CODE_POINT ? 'blue' : 'gray'}
+                onClick={() => setMode(EditorMode.CODE_POINT)}
+              />
+           </Tooltip>
+
+           <Tooltip label={t('editor.mode.copy', 'Copy Mode')} placement="left">
+              <IconButton
+                aria-label="Copy"
+                icon={<FaCopy />}
+                variant={mode === EditorMode.COPY ? 'solid' : 'ghost'}
+                colorScheme={mode === EditorMode.COPY ? 'blue' : 'gray'}
+                onClick={() => setMode(EditorMode.COPY)}
+                isDisabled={true} // Not implemented yet
+              />
+           </Tooltip>
+           
+           <Box h="1px" w="60%" bg="gray.200" my={2} />
+           
+           <IconButton
+              aria-label="Zoom In"
+              icon={<FaSearchPlus />}
+              size="sm"
+              onClick={() => setScale(s => Math.min(s + 0.1, 10))} // Reduced step
+           />
+           <IconButton
+              aria-label="Zoom Out"
+              icon={<FaSearchMinus />}
+              size="sm"
+              onClick={() => setScale(s => Math.max(s - 0.1, 0.1))} // Reduced step
+           />
+           <IconButton
+              aria-label="Reset Zoom"
+              icon={<Box fontSize="xs" fontWeight="bold">1:1</Box>}
+              size="sm"
+              onClick={() => { setScale(1); setPosition({x:0, y:0}); }}
+           />
+          </VStack>
+        </Flex>
+      </Flex>
+      
+      {/* Bottom Scrollbar for Mobile Panning */}
+      <Box p={2} bg="gray.50" _dark={{ bg: 'gray.900' }} borderTopWidth="1px">
+         <input
+           type="range"
+           min="0"
+           max="100"
+           defaultValue="50"
+           onChange={handleScrollX}
+           style={{ width: '100%', cursor: 'ew-resize' }}
+         />
       </Box>
-
-      {/* Right Toolbar */}
-      <VStack
-        w="50px"
-        bg="white"
-        _dark={{ bg: 'gray.800' }}
-        borderLeftWidth="1px"
-        spacing={2}
-        py={4}
-        zIndex={10}
-      >
-         <Tooltip label={t('editor.mode.edit', 'Edit Mode')} placement="left">
-            <IconButton
-              aria-label="Edit"
-              icon={<FaPen />}
-              variant={mode === EditorMode.EDIT ? 'solid' : 'ghost'}
-              colorScheme={mode === EditorMode.EDIT ? 'blue' : 'gray'}
-              onClick={() => setMode(EditorMode.EDIT)}
-              isDisabled={true} // Not implemented yet
-            />
-         </Tooltip>
-         
-         <Tooltip label={t('editor.mode.codepoint', 'Code Point Mode')} placement="left">
-            <IconButton
-              aria-label="Code Point"
-              icon={<FaCode />}
-              variant={mode === EditorMode.CODE_POINT ? 'solid' : 'ghost'}
-              colorScheme={mode === EditorMode.CODE_POINT ? 'blue' : 'gray'}
-              onClick={() => setMode(EditorMode.CODE_POINT)}
-            />
-         </Tooltip>
-
-         <Tooltip label={t('editor.mode.copy', 'Copy Mode')} placement="left">
-            <IconButton
-              aria-label="Copy"
-              icon={<FaCopy />}
-              variant={mode === EditorMode.COPY ? 'solid' : 'ghost'}
-              colorScheme={mode === EditorMode.COPY ? 'blue' : 'gray'}
-              onClick={() => setMode(EditorMode.COPY)}
-              isDisabled={true} // Not implemented yet
-            />
-         </Tooltip>
-         
-         <Box h="1px" w="60%" bg="gray.200" my={2} />
-         
-         <IconButton
-            aria-label="Zoom In"
-            icon={<FaSearchPlus />}
-            size="sm"
-            onClick={() => setScale(s => Math.min(s + 0.5, 10))}
-         />
-         <IconButton
-            aria-label="Zoom Out"
-            icon={<FaSearchMinus />}
-            size="sm"
-            onClick={() => setScale(s => Math.max(s - 0.5, 0.1))}
-         />
-         <IconButton
-            aria-label="Reset Zoom"
-            icon={<Box fontSize="xs" fontWeight="bold">1:1</Box>}
-            size="sm"
-            onClick={() => { setScale(1); setPosition({x:0, y:0}); }}
-         />
-      </VStack>
     </Flex>
   );
 };
