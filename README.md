@@ -1,75 +1,53 @@
-# React + TypeScript + Vite
+# MCBE Glyph Painter
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+[English] | [简体中文](./README_zh.md)
 
-Currently, two official plugins are available:
+A powerful tool designed for Minecraft Bedrock Edition (MCBE) to create and manage custom font glyphs (unicode Private Use Area).
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) (or [oxc](https://oxc.rs) when used in [rolldown-vite](https://vite.dev/guide/rolldown)) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+## 🎨 Overview
 
-## React Compiler
+In Minecraft Bedrock Edition, custom icons and emojis can be implemented using `glyph_E0/E1/E?...png` files within the Unicode Private Use Area (PUA). MCBE uses a spritesheet system (typically 256x256 pixels, but scalable) that is split into a 16x16 grid. Each cell in this grid represents one glyph.
 
-The React Compiler is enabled on this template. See [this documentation](https://react.dev/learn/react-compiler) for more information.
+**MCBE Glyph Painter** simplifies this process by providing:
+- **Instant Codepoint Access**: Quickly copy the unicode hex code for any slice.
+- **Slice-Based Editing**: Precision editing within a specific 16x16 (or relevant) grid cell, preventing accidental "overflow" into adjacent glyphs.
+- **Visual Feedback**: Real-time preview of how glyphs will appear.
 
-Note: This will impact Vite dev & build performances.
+## 🛠️ Technology Stack
 
-## Expanding the ESLint configuration
+- **Framework**: [React 19](https://react.dev/)
+- **Build Tool**: [Vite](https://vitejs.dev/)
+- **Language**: [TypeScript](https://www.typescriptlang.org/)
+- **UI Library**: [Chakra UI](https://chakra-ui.com/)
+- **State Management**: [React Hooks](https://react.dev/reference/react/hooks) & [LocalForage](https://github.com/localForage/localForage)
+- **Animation**: [Framer Motion](https://www.framer.com/motion/)
+- **Internationalization**: [i18next](https://www.i18next.com/)
 
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
+## 📂 Project Structure
+*Updated as of February 20, 2026*
 
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
-
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+```text
+MCBE Glyph Painter/
+├── src/
+│   ├── components/       # Reusable UI components (GlyphEditor, SliceEditor, etc.)
+│   ├── pages/            # Page-level components (Home, ProjectEditor, etc.)
+│   ├── hooks/            # Custom React hooks
+│   ├── i18n/             # Internationalization config
+│   ├── utils/            # Utility functions (Storage, image processing)
+│   ├── types.ts          # Global type definitions
+│   └── App.tsx           # Main application entry
+├── public/               # Static assets
+└── LICENSE               # MIT License
 ```
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
+## 🚀 Roadmap (To-Do List)
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
+- [ ] 📋 **Cross-image Slice Copying**: Copy a slice from one spritesheet and paste it into another.
+- [ ] 🖼️ **Independent PNG Editing**: Support editing standalone PNG files without project constraints.
+- [ ] ⌨️ **Keyboard Shortcuts**: Add hotkeys for faster workflow.
+- [x] 🎨 **Core Painting Engine**: Basic slice editing and drawing functionality.
 
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
-```
+## 📄 License
+
+This project is licensed under the [MIT License](./LICENSE).
+
