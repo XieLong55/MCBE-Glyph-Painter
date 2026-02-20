@@ -72,11 +72,11 @@ const hexToRgba = (hex: string) => {
   const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
   return result
     ? {
-        r: parseInt(result[1], 16),
-        g: parseInt(result[2], 16),
-        b: parseInt(result[3], 16),
-        a: 255,
-      }
+      r: parseInt(result[1], 16),
+      g: parseInt(result[2], 16),
+      b: parseInt(result[3], 16),
+      a: 255,
+    }
     : { r: 0, g: 0, b: 0, a: 255 };
 };
 
@@ -89,19 +89,21 @@ export const SliceEditor: React.FC<SliceEditorProps> = ({
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const [activeTool, setActiveTool] = useState<ToolType>('pencil');
+  const lastPosRef = useRef<{ x: number, y: number } | null>(null);
+  const isDirtyRef = useRef(false);
   const [primaryColor, setPrimaryColor] = useState('#000000');
   const [history, setHistory] = useState<ImageData[]>([]);
   const [historyIndex, setHistoryIndex] = useState(-1);
   const [isDirty, setIsDirty] = useState(false);
   const { isOpen, onOpen, onClose } = useDisclosure(); // For exit warning
-  
+
   // Zoom and Pan state
   const [scale, setScale] = useState(1);
   const [offset, setOffset] = useState({ x: 0, y: 0 });
   const [isPanning, setIsPanning] = useState(false);
   const [panStart, setPanStart] = useState({ x: 0, y: 0 });
   const [lastTouchDist, setLastTouchDist] = useState<number | null>(null);
-  
+
   // Settings
   const { isOpen: isSettingsOpen, onOpen: onSettingsOpen, onClose: onSettingsClose } = useDisclosure();
   const [showGrid, setShowGrid] = useState(false);
@@ -191,18 +193,18 @@ export const SliceEditor: React.FC<SliceEditorProps> = ({
     const rect = canvasRef.current.getBoundingClientRect();
     const scaleX = canvasRef.current.width / rect.width;
     const scaleY = canvasRef.current.height / rect.height;
-    
+
     let clientX = 0;
     let clientY = 0;
-    
+
     if ('touches' in e && e.touches.length > 0) {
-        clientX = e.touches[0].clientX;
-        clientY = e.touches[0].clientY;
+      clientX = e.touches[0].clientX;
+      clientY = e.touches[0].clientY;
     } else if ('clientX' in e) {
-        clientX = (e as React.MouseEvent).clientX;
-        clientY = (e as React.MouseEvent).clientY;
+      clientX = (e as React.MouseEvent).clientX;
+      clientY = (e as React.MouseEvent).clientY;
     }
-    
+
     return {
       x: Math.floor((clientX - rect.left) * scaleX),
       y: Math.floor((clientY - rect.top) * scaleY),
@@ -229,7 +231,7 @@ export const SliceEditor: React.FC<SliceEditorProps> = ({
       return;
     }
   };
-  
+
   // Zoom Controls
   const zoomIn = () => setScale(s => Math.min(s + 0.5, 5));
   const zoomOut = () => setScale(s => Math.max(s - 0.5, 0.5));
@@ -238,18 +240,18 @@ export const SliceEditor: React.FC<SliceEditorProps> = ({
   const drawPixel = (x: number, y: number, isEraser: boolean = false) => {
     const ctx = canvasRef.current?.getContext('2d');
     if (!ctx) return;
-    
+
     // Bounds check
     const width = ctx.canvas.width;
     const height = ctx.canvas.height;
-    
+
     // Brush size logic
     const halfSize = Math.floor(brushSize / 2);
     const startX = x - halfSize;
     const endX = x + halfSize;
     const startY = y - halfSize;
     const endY = y + halfSize;
-    
+
     // Optimization: Check if brush is within bounds
     if (startX >= width || endX < 0 || startY >= height || endY < 0) return;
 
@@ -258,43 +260,60 @@ export const SliceEditor: React.FC<SliceEditorProps> = ({
     let hasChanges = false;
 
     for (let py = startY; py <= endY; py++) {
-        for (let px = startX; px <= endX; px++) {
-            if (px < 0 || px >= width || py < 0 || py >= height) continue;
-            
-            const index = (py * width + px) * 4;
-            
-            // Optimization: Don't redraw if same color
-            if (
-              imgData.data[index] === color.r &&
-              imgData.data[index + 1] === color.g &&
-              imgData.data[index + 2] === color.b &&
-              imgData.data[index + 3] === color.a
-            ) continue;
+      for (let px = startX; px <= endX; px++) {
+        if (px < 0 || px >= width || py < 0 || py >= height) continue;
 
-            imgData.data[index] = color.r;
-            imgData.data[index + 1] = color.g;
-            imgData.data[index + 2] = color.b;
-            imgData.data[index + 3] = color.a;
-            hasChanges = true;
-        }
+        const index = (py * width + px) * 4;
+
+        // Optimization: Don't redraw if same color
+        if (
+          imgData.data[index] === color.r &&
+          imgData.data[index + 1] === color.g &&
+          imgData.data[index + 2] === color.b &&
+          imgData.data[index + 3] === color.a
+        ) continue;
+
+        imgData.data[index] = color.r;
+        imgData.data[index + 1] = color.g;
+        imgData.data[index + 2] = color.b;
+        imgData.data[index + 3] = color.a;
+        hasChanges = true;
+      }
     }
-    
+
     if (hasChanges) {
-        ctx.putImageData(imgData, 0, 0);
-        setIsDirty(true);
+      ctx.putImageData(imgData, 0, 0);
+      isDirtyRef.current = true;
+    }
+  };
+
+  // Bresenham line algorithm to fill in all pixels between two points
+  const drawLine = (x0: number, y0: number, x1: number, y1: number, isEraser: boolean) => {
+    const dx = Math.abs(x1 - x0);
+    const dy = Math.abs(y1 - y0);
+    const sx = x0 < x1 ? 1 : -1;
+    const sy = y0 < y1 ? 1 : -1;
+    let err = dx - dy;
+
+    while (true) {
+      drawPixel(x0, y0, isEraser);
+      if (x0 === x1 && y0 === y1) break;
+      const e2 = 2 * err;
+      if (e2 > -dy) { err -= dy; x0 += sx; }
+      if (e2 < dx) { err += dx; y0 += sy; }
     }
   };
 
   const floodFill = (startX: number, startY: number, fillColorHex: string) => {
     const ctx = canvasRef.current?.getContext('2d');
     if (!ctx) return;
-    
+
     const width = ctx.canvas.width;
     const height = ctx.canvas.height;
     const imgData = ctx.getImageData(0, 0, width, height);
     const data = imgData.data;
     const targetColor = hexToRgba(fillColorHex);
-    
+
     // Get starting color
     const startIndex = (startY * width + startX) * 4;
     const startR = data[startIndex];
@@ -311,13 +330,13 @@ export const SliceEditor: React.FC<SliceEditorProps> = ({
     ) return;
 
     const queue = [[startX, startY]];
-    
+
     while (queue.length > 0) {
       const [x, y] = queue.shift()!;
       if (x < 0 || x >= width || y < 0 || y >= height) continue;
 
       const idx = (y * width + x) * 4;
-      
+
       // Check match
       if (
         data[idx] === startR &&
@@ -353,150 +372,175 @@ export const SliceEditor: React.FC<SliceEditorProps> = ({
 
   const handleMouseDown = (e: React.MouseEvent) => {
     if (activeTool === 'hand') {
-        setIsPanning(true);
-        setPanStart({ x: e.clientX - offset.x, y: e.clientY - offset.y });
-        return;
+      setIsPanning(true);
+      setPanStart({ x: e.clientX - offset.x, y: e.clientY - offset.y });
+      return;
     }
 
     if (activeTool === 'bucket' || activeTool === 'eyedropper') {
-        handleCanvasClick(e);
-        return;
+      handleCanvasClick(e);
+      return;
     }
 
     setIsDrawing(true);
     const { x, y } = getMousePos(e);
+    lastPosRef.current = { x, y };
     // Right click acts as eraser for pencil
     const isRightClick = e.button === 2;
     if (activeTool === 'pencil') {
-        drawPixel(x, y, isRightClick);
+      drawPixel(x, y, isRightClick);
     } else if (activeTool === 'eraser') {
-        drawPixel(x, y, true);
+      drawPixel(x, y, true);
     }
   };
 
   const handleMouseMove = (e: React.MouseEvent) => {
     if (activeTool === 'hand') {
-        if (isPanning) {
-            setOffset({
-                x: e.clientX - panStart.x,
-                y: e.clientY - panStart.y
-            });
-        }
-        return;
+      if (isPanning) {
+        setOffset({
+          x: e.clientX - panStart.x,
+          y: e.clientY - panStart.y
+        });
+      }
+      return;
     }
 
     if (!isDrawing) return;
     const { x, y } = getMousePos(e);
     const isRightClick = (e.buttons & 2) === 2;
-    
+    const last = lastPosRef.current;
+
     if (activeTool === 'pencil') {
-        drawPixel(x, y, isRightClick);
+      if (last) drawLine(last.x, last.y, x, y, isRightClick);
+      else drawPixel(x, y, isRightClick);
     } else if (activeTool === 'eraser') {
-        drawPixel(x, y, true);
+      if (last) drawLine(last.x, last.y, x, y, true);
+      else drawPixel(x, y, true);
     }
+    lastPosRef.current = { x, y };
   };
 
   const handleMouseUp = () => {
     if (isPanning) {
-        setIsPanning(false);
+      setIsPanning(false);
     }
     if (isDrawing) {
       setIsDrawing(false);
-      // Save state on stroke end
+      lastPosRef.current = null;
+      // Flush dirty flag and save state on stroke end
+      if (isDirtyRef.current) {
+        setIsDirty(true);
+        isDirtyRef.current = false;
+      }
       if (canvasRef.current) {
-         const ctx = canvasRef.current.getContext('2d');
-         if (ctx) saveToHistory(ctx.getImageData(0, 0, canvasRef.current.width, canvasRef.current.height));
+        const ctx = canvasRef.current.getContext('2d');
+        if (ctx) saveToHistory(ctx.getImageData(0, 0, canvasRef.current.width, canvasRef.current.height));
       }
     }
   };
-  
+
   // Touch Handlers
   const handleTouchStart = (e: React.TouchEvent) => {
     // e.preventDefault(); // Do NOT prevent default here if we want to allow standard gestures? 
     // But we use touch-action: none, so browser gestures are disabled.
-    
+
     if (e.touches.length === 1) {
-        if (activeTool === 'hand') {
-            setIsPanning(true);
-            setPanStart({ x: e.touches[0].clientX - offset.x, y: e.touches[0].clientY - offset.y });
-        } else if (activeTool === 'bucket' || activeTool === 'eyedropper') {
-             handleCanvasClick(e);
-        } else {
-            // Draw
-            setIsDrawing(true);
-            const { x, y } = getMousePos(e);
-            if (activeTool === 'pencil') drawPixel(x, y, false);
-            else if (activeTool === 'eraser') drawPixel(x, y, true);
-        }
-    } else if (e.touches.length === 2) {
-        // Pan and Zoom
+      if (activeTool === 'hand') {
         setIsPanning(true);
-        const center = {
-            x: (e.touches[0].clientX + e.touches[1].clientX) / 2,
-            y: (e.touches[0].clientY + e.touches[1].clientY) / 2
-        };
-        setPanStart({ x: center.x - offset.x, y: center.y - offset.y });
-        
-        const dist = Math.hypot(
-            e.touches[0].clientX - e.touches[1].clientX,
-            e.touches[0].clientY - e.touches[1].clientY
-        );
-        setLastTouchDist(dist);
+        setPanStart({ x: e.touches[0].clientX - offset.x, y: e.touches[0].clientY - offset.y });
+      } else if (activeTool === 'bucket' || activeTool === 'eyedropper') {
+        handleCanvasClick(e);
+      } else {
+        // Draw
+        setIsDrawing(true);
+        const { x, y } = getMousePos(e);
+        lastPosRef.current = { x, y };
+        if (activeTool === 'pencil') drawPixel(x, y, false);
+        else if (activeTool === 'eraser') drawPixel(x, y, true);
+      }
+    } else if (e.touches.length === 2) {
+      // Pan and Zoom
+      setIsPanning(true);
+      const center = {
+        x: (e.touches[0].clientX + e.touches[1].clientX) / 2,
+        y: (e.touches[0].clientY + e.touches[1].clientY) / 2
+      };
+      setPanStart({ x: center.x - offset.x, y: center.y - offset.y });
+
+      const dist = Math.hypot(
+        e.touches[0].clientX - e.touches[1].clientX,
+        e.touches[0].clientY - e.touches[1].clientY
+      );
+      setLastTouchDist(dist);
     }
   };
-  
+
   const handleTouchMove = (e: React.TouchEvent) => {
     // e.preventDefault();
     if (e.touches.length === 1) {
-        if (activeTool === 'hand' && isPanning) {
-             setOffset({
-                 x: e.touches[0].clientX - panStart.x,
-                 y: e.touches[0].clientY - panStart.y
-             });
-        } else if (isDrawing) {
-             const { x, y } = getMousePos(e);
-             if (activeTool === 'pencil') drawPixel(x, y, false);
-             else if (activeTool === 'eraser') drawPixel(x, y, true);
+      if (activeTool === 'hand' && isPanning) {
+        setOffset({
+          x: e.touches[0].clientX - panStart.x,
+          y: e.touches[0].clientY - panStart.y
+        });
+      } else if (isDrawing) {
+        const { x, y } = getMousePos(e);
+        const last = lastPosRef.current;
+        if (activeTool === 'pencil') {
+          if (last) drawLine(last.x, last.y, x, y, false);
+          else drawPixel(x, y, false);
+        } else if (activeTool === 'eraser') {
+          if (last) drawLine(last.x, last.y, x, y, true);
+          else drawPixel(x, y, true);
         }
+        lastPosRef.current = { x, y };
+      }
     } else if (e.touches.length === 2) {
-        // Pan
-        const center = {
-            x: (e.touches[0].clientX + e.touches[1].clientX) / 2,
-            y: (e.touches[0].clientY + e.touches[1].clientY) / 2
-        };
-        if (isPanning) {
-             setOffset({
-                 x: center.x - panStart.x,
-                 y: center.y - panStart.y
-             });
-        }
-        
-        // Zoom
-        const dist = Math.hypot(
-            e.touches[0].clientX - e.touches[1].clientX,
-            e.touches[0].clientY - e.touches[1].clientY
-        );
-        
-        if (lastTouchDist) {
-            const delta = dist / lastTouchDist;
-            // Limit zoom speed
-            // const zoomFactor = 1 + (delta - 1) * 0.5;
-            setScale(s => Math.min(Math.max(0.1, s * delta), 5));
-            setLastTouchDist(dist);
-        }
+      // Pan
+      const center = {
+        x: (e.touches[0].clientX + e.touches[1].clientX) / 2,
+        y: (e.touches[0].clientY + e.touches[1].clientY) / 2
+      };
+      if (isPanning) {
+        setOffset({
+          x: center.x - panStart.x,
+          y: center.y - panStart.y
+        });
+      }
+
+      // Zoom
+      const dist = Math.hypot(
+        e.touches[0].clientX - e.touches[1].clientX,
+        e.touches[0].clientY - e.touches[1].clientY
+      );
+
+      if (lastTouchDist) {
+        const delta = dist / lastTouchDist;
+        // Limit zoom speed
+        // const zoomFactor = 1 + (delta - 1) * 0.5;
+        setScale(s => Math.min(Math.max(0.1, s * delta), 5));
+        setLastTouchDist(dist);
+      }
     }
   };
-  
+
   const handleTouchEnd = () => {
+    const wasDrawing = isDrawing;
     setIsPanning(false);
     setIsDrawing(false);
     setLastTouchDist(null);
-    if (isDrawing || isPanning) {
-         // Save history if we were drawing
-         if (canvasRef.current && isDrawing) {
-            const ctx = canvasRef.current.getContext('2d');
-            if (ctx) saveToHistory(ctx.getImageData(0, 0, canvasRef.current.width, canvasRef.current.height));
-         }
+    lastPosRef.current = null;
+    if (wasDrawing) {
+      // Flush dirty flag
+      if (isDirtyRef.current) {
+        setIsDirty(true);
+        isDirtyRef.current = false;
+      }
+      // Save history if we were drawing
+      if (canvasRef.current) {
+        const ctx = canvasRef.current.getContext('2d');
+        if (ctx) saveToHistory(ctx.getImageData(0, 0, canvasRef.current.width, canvasRef.current.height));
+      }
     }
   };
 
@@ -509,13 +553,13 @@ export const SliceEditor: React.FC<SliceEditorProps> = ({
       }
     }
   };
-  
+
   const handleBack = () => {
-      if (isDirty) {
-          onOpen();
-      } else {
-          onCancel();
-      }
+    if (isDirty) {
+      onOpen();
+    } else {
+      onCancel();
+    }
   };
 
   return (
@@ -523,314 +567,314 @@ export const SliceEditor: React.FC<SliceEditorProps> = ({
       {/* Header */}
       <Flex p={2} borderBottomWidth="1px" align="center" justify="space-between" bg={useColorModeValue('white', 'gray.800')}>
         <HStack>
-            <IconButton
-              aria-label="Back"
-              icon={<FaArrowLeft />}
-              variant="ghost"
-              onClick={handleBack}
-            />
-            <Text fontWeight="bold">{t('editor.slice_editor', 'Slice Editor')}</Text>
+          <IconButton
+            aria-label="Back"
+            icon={<FaArrowLeft />}
+            variant="ghost"
+            onClick={handleBack}
+          />
+          <Text fontWeight="bold">{t('editor.slice_editor', 'Slice Editor')}</Text>
         </HStack>
         <HStack spacing={2}>
-            {/* Zoom Controls moved to header */}
-            <HStack spacing={1} mr={2}>
-                <IconButton 
-                    icon={<FaSearchPlus />} 
-                    onClick={zoomIn} 
-                    aria-label="Zoom In" 
-                    size="sm" 
-                    variant="ghost"
-                />
-                <IconButton 
-                    icon={<FaSearchMinus />} 
-                    onClick={zoomOut} 
-                    aria-label="Zoom Out" 
-                    size="sm" 
-                    variant="ghost"
-                />
-                <IconButton 
-                    icon={<FaCompress />} 
-                    onClick={resetZoom} 
-                    aria-label="Reset Zoom" 
-                    size="sm" 
-                    variant="ghost"
-                />
-            </HStack>
-            
+          {/* Zoom Controls moved to header */}
+          <HStack spacing={1} mr={2}>
             <IconButton
-              aria-label="Undo"
-              icon={<FaUndo />}
+              icon={<FaSearchPlus />}
+              onClick={zoomIn}
+              aria-label="Zoom In"
               size="sm"
-              isDisabled={historyIndex <= 0}
-              onClick={undo}
+              variant="ghost"
             />
             <IconButton
-              aria-label="Redo"
-              icon={<FaRedo />}
+              icon={<FaSearchMinus />}
+              onClick={zoomOut}
+              aria-label="Zoom Out"
               size="sm"
-              isDisabled={historyIndex >= history.length - 1}
-              onClick={redo}
+              variant="ghost"
             />
-            <Button
-                leftIcon={<FaSave />}
-                colorScheme="blue"
-                size="sm"
-                onClick={handleSave}
-                isDisabled={!isDirty}
-            >
-                {t('common.save', 'Save')}
-            </Button>
+            <IconButton
+              icon={<FaCompress />}
+              onClick={resetZoom}
+              aria-label="Reset Zoom"
+              size="sm"
+              variant="ghost"
+            />
+          </HStack>
+
+          <IconButton
+            aria-label="Undo"
+            icon={<FaUndo />}
+            size="sm"
+            isDisabled={historyIndex <= 0}
+            onClick={undo}
+          />
+          <IconButton
+            aria-label="Redo"
+            icon={<FaRedo />}
+            size="sm"
+            isDisabled={historyIndex >= history.length - 1}
+            onClick={redo}
+          />
+          <Button
+            leftIcon={<FaSave />}
+            colorScheme="blue"
+            size="sm"
+            onClick={handleSave}
+            isDisabled={!isDirty}
+          >
+            {t('common.save', 'Save')}
+          </Button>
         </HStack>
       </Flex>
 
       <Flex flex={1} overflow="hidden">
         {/* Left Toolbar */}
         <VStack p={2} spacing={2} borderRightWidth="1px" bg={useColorModeValue('white', 'gray.800')}>
-            <Tooltip label={t('editor.tool.hand', 'Hand (Pan)')} placement="right">
-                <IconButton
-                    aria-label="Hand"
-                    icon={<FaHandPaper />}
-                    isActive={activeTool === 'hand'}
-                    colorScheme={activeTool === 'hand' ? 'blue' : 'gray'}
-                    onClick={() => setActiveTool('hand')}
-                />
-            </Tooltip>
-            <Tooltip label={t('editor.tool.pencil', 'Pencil (Left: Draw, Right: Erase)')} placement="right">
-                <IconButton
-                    aria-label="Pencil"
-                    icon={<FaPen />}
-                    isActive={activeTool === 'pencil'}
-                    colorScheme={activeTool === 'pencil' ? 'blue' : 'gray'}
-                    onClick={() => setActiveTool('pencil')}
-                />
-            </Tooltip>
-            <Tooltip label={t('editor.tool.eraser', 'Eraser')} placement="right">
-                <IconButton
-                    aria-label="Eraser"
-                    icon={<FaEraser />}
-                    isActive={activeTool === 'eraser'}
-                    colorScheme={activeTool === 'eraser' ? 'blue' : 'gray'}
-                    onClick={() => setActiveTool('eraser')}
-                />
-            </Tooltip>
-            
-            {/* Brush Size Selector - Only show for Pencil/Eraser */}
-            {(activeTool === 'pencil' || activeTool === 'eraser') && (
-              <Tooltip label={`Brush Size: ${brushSize}x${brushSize}`} placement="right">
-                  <Button
-                      size="sm"
-                      w="40px"
-                      h="40px"
-                      p={0}
-                      variant="outline"
-                      colorScheme="blue"
-                      onClick={() => setBrushSize(prev => (prev === 1 ? 3 : prev === 3 ? 5 : 1) as 1|3|5)}
-                  >
-                      <VStack spacing={0}>
-                        <FaCircle size={brushSize === 1 ? 8 : brushSize === 3 ? 12 : 16} />
-                        <Text fontSize="xs">{brushSize}x</Text>
-                      </VStack>
-                  </Button>
-              </Tooltip>
-            )}
+          <Tooltip label={t('editor.tool.hand', 'Hand (Pan)')} placement="right">
+            <IconButton
+              aria-label="Hand"
+              icon={<FaHandPaper />}
+              isActive={activeTool === 'hand'}
+              colorScheme={activeTool === 'hand' ? 'blue' : 'gray'}
+              onClick={() => setActiveTool('hand')}
+            />
+          </Tooltip>
+          <Tooltip label={t('editor.tool.pencil', 'Pencil (Left: Draw, Right: Erase)')} placement="right">
+            <IconButton
+              aria-label="Pencil"
+              icon={<FaPen />}
+              isActive={activeTool === 'pencil'}
+              colorScheme={activeTool === 'pencil' ? 'blue' : 'gray'}
+              onClick={() => setActiveTool('pencil')}
+            />
+          </Tooltip>
+          <Tooltip label={t('editor.tool.eraser', 'Eraser')} placement="right">
+            <IconButton
+              aria-label="Eraser"
+              icon={<FaEraser />}
+              isActive={activeTool === 'eraser'}
+              colorScheme={activeTool === 'eraser' ? 'blue' : 'gray'}
+              onClick={() => setActiveTool('eraser')}
+            />
+          </Tooltip>
 
-            <Tooltip label={t('editor.tool.bucket', 'Bucket Fill')} placement="right">
-                <IconButton
-                    aria-label="Bucket"
-                    icon={<FaFillDrip />}
-                    isActive={activeTool === 'bucket'}
-                    colorScheme={activeTool === 'bucket' ? 'blue' : 'gray'}
-                    onClick={() => setActiveTool('bucket')}
-                />
+          {/* Brush Size Selector - Only show for Pencil/Eraser */}
+          {(activeTool === 'pencil' || activeTool === 'eraser') && (
+            <Tooltip label={`Brush Size: ${brushSize}x${brushSize}`} placement="right">
+              <Button
+                size="sm"
+                w="40px"
+                h="40px"
+                p={0}
+                variant="outline"
+                colorScheme="blue"
+                onClick={() => setBrushSize(prev => (prev === 1 ? 3 : prev === 3 ? 5 : 1) as 1 | 3 | 5)}
+              >
+                <VStack spacing={0}>
+                  <FaCircle size={brushSize === 1 ? 8 : brushSize === 3 ? 12 : 16} />
+                  <Text fontSize="xs">{brushSize}x</Text>
+                </VStack>
+              </Button>
             </Tooltip>
-            <Tooltip label={t('editor.tool.eyedropper', 'Eyedropper')} placement="right">
-                <IconButton
-                    aria-label="Eyedropper"
-                    icon={<FaEyeDropper />}
-                    isActive={activeTool === 'eyedropper'}
-                    colorScheme={activeTool === 'eyedropper' ? 'blue' : 'gray'}
-                    onClick={() => setActiveTool('eyedropper')}
-                />
-            </Tooltip>
-            
-            <Spacer />
-            <Divider />
-            
-            <Tooltip label={t('editor.settings', 'Settings')} placement="right">
-                <IconButton
-                    aria-label="Settings"
-                    icon={<FaCog />}
-                    variant="ghost"
-                    onClick={onSettingsOpen}
-                />
-            </Tooltip>
+          )}
+
+          <Tooltip label={t('editor.tool.bucket', 'Bucket Fill')} placement="right">
+            <IconButton
+              aria-label="Bucket"
+              icon={<FaFillDrip />}
+              isActive={activeTool === 'bucket'}
+              colorScheme={activeTool === 'bucket' ? 'blue' : 'gray'}
+              onClick={() => setActiveTool('bucket')}
+            />
+          </Tooltip>
+          <Tooltip label={t('editor.tool.eyedropper', 'Eyedropper')} placement="right">
+            <IconButton
+              aria-label="Eyedropper"
+              icon={<FaEyeDropper />}
+              isActive={activeTool === 'eyedropper'}
+              colorScheme={activeTool === 'eyedropper' ? 'blue' : 'gray'}
+              onClick={() => setActiveTool('eyedropper')}
+            />
+          </Tooltip>
+
+          <Spacer />
+          <Divider />
+
+          <Tooltip label={t('editor.settings', 'Settings')} placement="right">
+            <IconButton
+              aria-label="Settings"
+              icon={<FaCog />}
+              variant="ghost"
+              onClick={onSettingsOpen}
+            />
+          </Tooltip>
         </VStack>
 
         {/* Center Canvas */}
-        <Box 
-            flex={1} 
-            bg={useColorModeValue('gray.100', 'gray.900')} 
-            overflow="hidden" 
-            position="relative"
-            ref={containerRef}
-            onTouchStart={handleTouchStart}
-            onTouchMove={handleTouchMove}
-            onTouchEnd={handleTouchEnd}
-            onMouseDown={handleMouseDown}
-            onMouseMove={handleMouseMove}
-            onMouseUp={handleMouseUp}
-            onMouseLeave={handleMouseUp}
-            cursor={activeTool === 'hand' || isPanning ? 'grab' : 'default'}
-            style={{ touchAction: 'none' }}
+        <Box
+          flex={1}
+          bg={useColorModeValue('gray.100', 'gray.900')}
+          overflow="hidden"
+          position="relative"
+          ref={containerRef}
+          onTouchStart={handleTouchStart}
+          onTouchMove={handleTouchMove}
+          onTouchEnd={handleTouchEnd}
+          onMouseDown={handleMouseDown}
+          onMouseMove={handleMouseMove}
+          onMouseUp={handleMouseUp}
+          onMouseLeave={handleMouseUp}
+          cursor={activeTool === 'hand' || isPanning ? 'grab' : 'default'}
+          style={{ touchAction: 'none' }}
         >
-             <Box
+          <Box
+            position="absolute"
+            left="50%"
+            top="50%"
+            transform={`translate(-50%, -50%) translate(${offset.x}px, ${offset.y}px) scale(${scale})`}
+            transformOrigin="center"
+            borderWidth="1px"
+            boxShadow="lg"
+            bg="white"
+            backgroundImage="linear-gradient(45deg, #ccc 25%, transparent 25%), linear-gradient(-45deg, #ccc 25%, transparent 25%), linear-gradient(45deg, transparent 75%, #ccc 75%), linear-gradient(-45deg, transparent 75%, #ccc 75%)"
+            backgroundSize="20px 20px"
+            style={{ touchAction: 'none' }}
+          >
+            <canvas
+              ref={canvasRef}
+              width={initialData.width}
+              height={initialData.height}
+              style={{
+                width: `${initialData.width * ZOOM_LEVEL}px`,
+                height: `${initialData.height * ZOOM_LEVEL}px`,
+                imageRendering: 'pixelated',
+                cursor: activeTool === 'pencil' ? 'crosshair' : activeTool === 'hand' ? 'grab' : 'default',
+                touchAction: 'none'
+              }}
+              onContextMenu={(e) => e.preventDefault()}
+            />
+
+            {/* Grid Overlay */}
+            {showGrid && (
+              <Box
                 position="absolute"
-                left="50%"
-                top="50%"
-                transform={`translate(-50%, -50%) translate(${offset.x}px, ${offset.y}px) scale(${scale})`}
-                transformOrigin="center"
-                borderWidth="1px"
-                boxShadow="lg"
-                bg="white"
-                backgroundImage="linear-gradient(45deg, #ccc 25%, transparent 25%), linear-gradient(-45deg, #ccc 25%, transparent 25%), linear-gradient(45deg, transparent 75%, #ccc 75%), linear-gradient(-45deg, transparent 75%, #ccc 75%)"
-                backgroundSize="20px 20px"
-                style={{ touchAction: 'none' }}
-             >
-                 <canvas
-                    ref={canvasRef}
-                    width={initialData.width}
-                    height={initialData.height}
-                    style={{
-                        width: `${initialData.width * ZOOM_LEVEL}px`,
-                        height: `${initialData.height * ZOOM_LEVEL}px`,
-                        imageRendering: 'pixelated',
-                        cursor: activeTool === 'pencil' ? 'crosshair' : activeTool === 'hand' ? 'grab' : 'default',
-                        touchAction: 'none'
-                    }}
-                    onContextMenu={(e) => e.preventDefault()}
-             />
-             
-             {/* Grid Overlay */}
-             {showGrid && (
-               <Box
-                 position="absolute"
-                 top={0}
-                 left={0}
-                 width="100%"
-                 height="100%"
-                 pointerEvents="none"
-                 style={{
-                   backgroundImage: `
+                top={0}
+                left={0}
+                width="100%"
+                height="100%"
+                pointerEvents="none"
+                style={{
+                  backgroundImage: `
                      linear-gradient(to right, rgba(128, 128, 128, 0.5) 1px, transparent 1px),
                      linear-gradient(to bottom, rgba(128, 128, 128, 0.5) 1px, transparent 1px)
                    `,
-                   backgroundSize: `${ZOOM_LEVEL}px ${ZOOM_LEVEL}px`
-                 }}
-               />
-             )}
-         </Box>
-    </Box>
+                  backgroundSize: `${ZOOM_LEVEL}px ${ZOOM_LEVEL}px`
+                }}
+              />
+            )}
+          </Box>
+        </Box>
 
         {/* Right Color Palette */}
         <VStack p={2} spacing={3} borderLeftWidth="1px" bg={useColorModeValue('white', 'gray.800')} w="60px">
-            <Text fontSize="xs" fontWeight="bold">{t('editor.colors', 'Colors')}</Text>
-            {palette.map((color, idx) => (
-                <Popover key={idx} placement="left" isLazy>
-                    <PopoverTrigger>
-                        <Box
-                            w="30px"
-                            h="30px"
-                            borderRadius="md"
-                            borderWidth={2}
-                            borderColor={primaryColor === color ? 'blue.500' : 'gray.200'}
-                            bg={color === 'transparent' ? 'transparent' : color}
-                            backgroundImage={color === 'transparent' ? "linear-gradient(45deg, #ccc 25%, transparent 25%), linear-gradient(-45deg, #ccc 25%, transparent 25%), linear-gradient(45deg, transparent 75%, #ccc 75%), linear-gradient(-45deg, transparent 75%, #ccc 75%)" : 'none'}
-                            backgroundSize="10px 10px"
-                            cursor="pointer"
-                            onClick={() => setPrimaryColor(color)}
-                            boxShadow="sm"
-                            _hover={{ transform: 'scale(1.1)' }}
-                            transition="transform 0.1s"
-                        />
-                    </PopoverTrigger>
-                    <PopoverContent w="200px">
-                        <PopoverArrow />
-                        <PopoverCloseButton />
-                        <PopoverBody>
-                             <Text mb={2} fontSize="sm">Edit Color</Text>
-                             <Input 
-                                type="color" 
-                                value={color === 'transparent' ? '#ffffff' : color} 
-                                onChange={(e) => {
-                                    const newPalette = [...palette];
-                                    newPalette[idx] = e.target.value;
-                                    setPalette(newPalette);
-                                    setPrimaryColor(e.target.value);
-                                }} 
-                                mb={2}
-                             />
-                             <Input 
-                                placeholder="#RRGGBB" 
-                                value={color} 
-                                onChange={(e) => {
-                                    const newPalette = [...palette];
-                                    newPalette[idx] = e.target.value;
-                                    setPalette(newPalette);
-                                    setPrimaryColor(e.target.value);
-                                }}
-                                size="sm"
-                             />
-                        </PopoverBody>
-                    </PopoverContent>
-                </Popover>
-            ))}
-            
-            {/* Active Color Indicator */}
-            <Box mt={4} pt={4} borderTopWidth="1px" w="full" textAlign="center">
-                 <Popover placement="left" isLazy>
-                     <PopoverTrigger>
-                         <Box
-                            w="40px"
-                            h="40px"
-                            mx="auto"
-                            borderRadius="full"
-                            borderWidth="2px"
-                            borderColor="gray.400"
-                            bg={primaryColor === 'transparent' ? 'transparent' : primaryColor}
-                            backgroundImage={primaryColor === 'transparent' ? "linear-gradient(45deg, #ccc 25%, transparent 25%), linear-gradient(-45deg, #ccc 25%, transparent 25%), linear-gradient(45deg, transparent 75%, #ccc 75%), linear-gradient(-45deg, transparent 75%, #ccc 75%)" : 'none'}
-                            backgroundSize="10px 10px"
-                            cursor="pointer"
-                            _hover={{ opacity: 0.8 }}
-                         />
-                     </PopoverTrigger>
-                     <PopoverContent w="200px">
-                        <PopoverArrow />
-                        <PopoverCloseButton />
-                        <PopoverBody>
-                             <Text mb={2} fontSize="sm">{t('editor.current_color', 'Current Color')}</Text>
-                             <Input 
-                                type="color" 
-                                value={primaryColor === 'transparent' ? '#ffffff' : primaryColor} 
-                                onChange={(e) => {
-                                    setPrimaryColor(e.target.value);
-                                    setActiveTool('pencil');
-                                }} 
-                                mb={2}
-                             />
-                             <Input 
-                                placeholder="#RRGGBB" 
-                                value={primaryColor} 
-                                onChange={(e) => {
-                                    setPrimaryColor(e.target.value);
-                                    setActiveTool('pencil');
-                                }}
-                                size="sm"
-                             />
-                        </PopoverBody>
-                     </PopoverContent>
-                 </Popover>
-                 <Text fontSize="xs" mt={1}>{primaryColor}</Text>
-            </Box>
+          <Text fontSize="xs" fontWeight="bold">{t('editor.colors', 'Colors')}</Text>
+          {palette.map((color, idx) => (
+            <Popover key={idx} placement="left" isLazy>
+              <PopoverTrigger>
+                <Box
+                  w="30px"
+                  h="30px"
+                  borderRadius="md"
+                  borderWidth={2}
+                  borderColor={primaryColor === color ? 'blue.500' : 'gray.200'}
+                  bg={color === 'transparent' ? 'transparent' : color}
+                  backgroundImage={color === 'transparent' ? "linear-gradient(45deg, #ccc 25%, transparent 25%), linear-gradient(-45deg, #ccc 25%, transparent 25%), linear-gradient(45deg, transparent 75%, #ccc 75%), linear-gradient(-45deg, transparent 75%, #ccc 75%)" : 'none'}
+                  backgroundSize="10px 10px"
+                  cursor="pointer"
+                  onClick={() => setPrimaryColor(color)}
+                  boxShadow="sm"
+                  _hover={{ transform: 'scale(1.1)' }}
+                  transition="transform 0.1s"
+                />
+              </PopoverTrigger>
+              <PopoverContent w="200px">
+                <PopoverArrow />
+                <PopoverCloseButton />
+                <PopoverBody>
+                  <Text mb={2} fontSize="sm">Edit Color</Text>
+                  <Input
+                    type="color"
+                    value={color === 'transparent' ? '#ffffff' : color}
+                    onChange={(e) => {
+                      const newPalette = [...palette];
+                      newPalette[idx] = e.target.value;
+                      setPalette(newPalette);
+                      setPrimaryColor(e.target.value);
+                    }}
+                    mb={2}
+                  />
+                  <Input
+                    placeholder="#RRGGBB"
+                    value={color}
+                    onChange={(e) => {
+                      const newPalette = [...palette];
+                      newPalette[idx] = e.target.value;
+                      setPalette(newPalette);
+                      setPrimaryColor(e.target.value);
+                    }}
+                    size="sm"
+                  />
+                </PopoverBody>
+              </PopoverContent>
+            </Popover>
+          ))}
+
+          {/* Active Color Indicator */}
+          <Box mt={4} pt={4} borderTopWidth="1px" w="full" textAlign="center">
+            <Popover placement="left" isLazy>
+              <PopoverTrigger>
+                <Box
+                  w="40px"
+                  h="40px"
+                  mx="auto"
+                  borderRadius="full"
+                  borderWidth="2px"
+                  borderColor="gray.400"
+                  bg={primaryColor === 'transparent' ? 'transparent' : primaryColor}
+                  backgroundImage={primaryColor === 'transparent' ? "linear-gradient(45deg, #ccc 25%, transparent 25%), linear-gradient(-45deg, #ccc 25%, transparent 25%), linear-gradient(45deg, transparent 75%, #ccc 75%), linear-gradient(-45deg, transparent 75%, #ccc 75%)" : 'none'}
+                  backgroundSize="10px 10px"
+                  cursor="pointer"
+                  _hover={{ opacity: 0.8 }}
+                />
+              </PopoverTrigger>
+              <PopoverContent w="200px">
+                <PopoverArrow />
+                <PopoverCloseButton />
+                <PopoverBody>
+                  <Text mb={2} fontSize="sm">{t('editor.current_color', 'Current Color')}</Text>
+                  <Input
+                    type="color"
+                    value={primaryColor === 'transparent' ? '#ffffff' : primaryColor}
+                    onChange={(e) => {
+                      setPrimaryColor(e.target.value);
+                      setActiveTool('pencil');
+                    }}
+                    mb={2}
+                  />
+                  <Input
+                    placeholder="#RRGGBB"
+                    value={primaryColor}
+                    onChange={(e) => {
+                      setPrimaryColor(e.target.value);
+                      setActiveTool('pencil');
+                    }}
+                    size="sm"
+                  />
+                </PopoverBody>
+              </PopoverContent>
+            </Popover>
+            <Text fontSize="xs" mt={1}>{primaryColor}</Text>
+          </Box>
         </VStack>
       </Flex>
 
@@ -868,13 +912,13 @@ export const SliceEditor: React.FC<SliceEditorProps> = ({
                 <FormLabel htmlFor="grid-view" mb="0">
                   {t('editor.settings.grid_view', 'Grid View')}
                 </FormLabel>
-                <Switch 
-                    id="grid-view" 
-                    isChecked={showGrid} 
-                    onChange={(e) => setShowGrid(e.target.checked)} 
+                <Switch
+                  id="grid-view"
+                  isChecked={showGrid}
+                  onChange={(e) => setShowGrid(e.target.checked)}
                 />
               </FormControl>
-              
+
               {/* You can add more settings here later */}
             </VStack>
           </ModalBody>
