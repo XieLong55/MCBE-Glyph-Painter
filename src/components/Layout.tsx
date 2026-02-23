@@ -7,18 +7,19 @@ import {
 import { useTranslation } from 'react-i18next';
 import { Link as RouterLink, Outlet, useLocation } from 'react-router-dom';
 import { FaSun, FaMoon, FaGlobe, FaBars, FaFolder } from 'react-icons/fa';
+import { WindowControls } from './WindowControls';
 
 function ButtonLink({ to, icon, label, onClick, isActive }: { to: string, icon: React.ElementType, label: string, onClick?: () => void, isActive?: boolean }) {
   return (
     <RouterLink to={to} onClick={onClick}>
-      <HStack 
-        spacing={3} 
-        px={4} 
-        py={2} 
-        borderRadius="md" 
-        bg={isActive ? 'blue.50' : 'transparent'} 
+      <HStack
+        spacing={3}
+        px={4}
+        py={2}
+        borderRadius="md"
+        bg={isActive ? 'blue.50' : 'transparent'}
         color={isActive ? 'blue.600' : 'inherit'}
-        _dark={{ 
+        _dark={{
           bg: isActive ? 'blue.900' : 'transparent',
           color: isActive ? 'blue.200' : 'inherit'
         }}
@@ -52,7 +53,7 @@ const NavContent = ({ onClose }: { onClose?: () => void }) => {
 const SettingsContent = () => {
   const { t, i18n } = useTranslation();
   const { colorMode, setColorMode } = useColorMode();
-  
+
   const changeLanguage = (lang: string) => {
     i18n.changeLanguage(lang);
   };
@@ -90,9 +91,23 @@ export function Layout() {
 
   return (
     <Flex direction="column" minH="100vh" bg={colorMode === 'light' ? 'gray.50' : 'gray.900'}>
-      <Box bg={colorMode === 'light' ? 'white' : 'gray.800'} shadow="sm" position="sticky" top={0} zIndex={1000}>
-        <Container maxW="full" px={8}>
-          <Flex h={16} alignItems="center">
+      <Box
+        bg={colorMode === 'light' ? 'white' : 'gray.800'}
+        shadow="sm"
+        position="sticky"
+        top={0}
+        zIndex={1000}
+        data-tauri-drag-region
+      >
+        <Container maxW="full" px={0}>
+          <Flex
+            h={16}
+            alignItems="center"
+            pl={8}
+            pr={0}
+            position="relative"
+            data-tauri-drag-region
+          >
             {isMobile && (
               <IconButton
                 icon={<Icon as={FaBars} />}
@@ -100,25 +115,37 @@ export function Layout() {
                 onClick={onOpen}
                 aria-label="Menu"
                 mr={4}
+                zIndex={1}
               />
             )}
-            
+
             {/* Logo link now points to projects instead of home */}
-            <RouterLink to="/projects">
-              <Heading size="md" bgGradient="linear(to-r, blue.400, purple.500)" bgClip="text">
+            <RouterLink to="/projects" style={{ flexShrink: 1, minWidth: 0, overflow: 'hidden', zIndex: 1 }}>
+              <Heading
+                size="md"
+                bgGradient="linear(to-r, blue.400, purple.500)"
+                bgClip="text"
+                whiteSpace="nowrap"
+                textOverflow="ellipsis"
+                display={{ base: 'none', md: 'block' }}
+              >
                 MCBE Glyph Painter
               </Heading>
             </RouterLink>
-            
-            <Spacer />
-            
+
+            <Spacer data-tauri-drag-region />
+
             {!isMobile && (
-              <HStack spacing={4}>
+              <HStack spacing={4} mr={4} zIndex={1}>
                 <NavContent onClose={onClose} />
                 <Box h="24px" w="1px" bg="gray.200" _dark={{ bg: 'gray.700' }} mx={2} />
                 <SettingsContent />
               </HStack>
             )}
+
+            <Box h="100%" zIndex={2}>
+              <WindowControls />
+            </Box>
           </Flex>
         </Container>
       </Box>
@@ -144,7 +171,7 @@ export function Layout() {
               </HStack>
               <HStack justify="space-between" px={4}>
                 <Text fontWeight="medium">{t('settings.theme')}</Text>
-                 <Menu>
+                <Menu>
                   <MenuButton as={IconButton} icon={<Icon as={colorMode === 'light' ? FaSun : FaMoon} />} size="sm" variant="ghost" />
                   <MenuList>
                     <MenuItem icon={<Icon as={FaSun} />} onClick={() => setColorMode('light')}>{t('theme.light')}</MenuItem>
