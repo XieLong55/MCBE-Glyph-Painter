@@ -12,7 +12,7 @@ export default defineConfig({
     }),
     VitePWA({
       registerType: 'autoUpdate',
-      includeAssets: ['favicon.jpg', 'glyph_E0.png', 'glyph_E1.png', 'vite.svg'],
+      includeAssets: ['favicon.jpg', 'favicon.png', 'icon-192.png', 'icon-512.png', 'icon-144.png', 'screenshot-narrow.png', 'glyph_E0.png', 'glyph_E1.png', 'vite.svg'],
       manifest: {
         name: 'MCBE Glyph Painter',
         short_name: 'Glyph Painter',
@@ -23,20 +23,40 @@ export default defineConfig({
         orientation: 'any',
         icons: [
           {
-            src: 'favicon.jpg',
+            src: 'icon-144.png',
+            sizes: '144x144',
+            type: 'image/png'
+          },
+          {
+            src: 'icon-192.png',
             sizes: '192x192',
-            type: 'image/jpeg'
+            type: 'image/png'
           },
           {
-            src: 'favicon.jpg',
+            src: 'icon-512.png',
             sizes: '512x512',
-            type: 'image/jpeg'
+            type: 'image/png'
           },
           {
-            src: 'favicon.jpg',
+            src: 'icon-512.png',
             sizes: '512x512',
-            type: 'image/jpeg',
+            type: 'image/png',
             purpose: 'any maskable'
+          }
+        ],
+        screenshots: [
+          {
+            src: 'icon-512.png',
+            sizes: '512x512',
+            type: 'image/png',
+            form_factor: 'wide',
+            label: 'MCBE Glyph Painter'
+          },
+          {
+            src: 'screenshot-narrow.png',
+            sizes: '1080x1920',
+            type: 'image/png',
+            label: 'MCBE Glyph Painter'
           }
         ]
       },
