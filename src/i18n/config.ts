@@ -87,7 +87,7 @@ const resources = {
   zh: {
     translation: {
       "app.title": "MCBE Glyph Painter",
-      "home.welcome": "欢迎使用 MCBE Painter",
+      "home.welcome": "欢迎使用 MCBE Glyph Painter",
       "home.get_started": "立即开始",
       "projects.title": "我的项目",
       "projects.create": "新建项目",
